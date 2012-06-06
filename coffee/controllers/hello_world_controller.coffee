@@ -10,7 +10,7 @@ define [
     title: 'Hello World'
 
     historyURL: (params) ->
-      'hello-world'
+      ''
 
     show: (params) ->
       #console.debug 'HelloWorldController#show'

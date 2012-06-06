@@ -2,7 +2,7 @@ define [
   'chaplin'
   'views/layout'
   'routes'
-], (Chaplin, Layout, SessionController, NavigationController, SidebarController, routes) ->
+], (Chaplin, Layout, routes) ->
   'use strict'
 
   # The application object
@@ -26,6 +26,11 @@ define [
       @initControllers()
 
       # Register all routes and start routing
+      # You might pass Router/History options as the second parameter.
+      # Chaplin enables pushState per default and Backbone uses / as
+      # the root per default. You might change that in the options
+      # if necessary:
+      # @initRouter routes, pushState: false, root: '/subdir/'
       @initRouter routes
 
       # Freeze the application instance to prevent further changes
@@ -34,6 +39,7 @@ define [
     # Override standard layout initializer
     # ------------------------------------
     initLayout: ->
+      # Use an application-specific Layout class
       @layout = new Layout {@title}
 
     # Instantiate common controllers

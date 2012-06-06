@@ -527,6 +527,9 @@
       };
 
       Layout.prototype.updateLoginClasses = function(loggedIn) {
+        if (loggedIn == null) {
+          loggedIn = false;
+        }
         return $(document.body).toggleClass('logged-out', !loggedIn).toggleClass('logged-in', loggedIn);
       };
 
@@ -1101,13 +1104,16 @@
         $viewEl = view.$el;
         if (included) {
           if (animationDuration) {
+            $viewEl.addClass('opacity-transitionable');
+          }
+          if (animationDuration) {
             $viewEl.css('opacity', 0);
           }
         } else {
           $viewEl.css('display', 'none');
         }
         $list = this.$list;
-        children = $list.children(this.itemSelector);
+        children = $list.children(this.itemSelector || void 0);
         length = children.length;
         if (length === 0 || position === length) {
           $list.append(viewEl);
@@ -1123,6 +1129,7 @@
         view.trigger('addedToDOM');
         this.updateVisibleItems(item, included);
         if (animationDuration && included) {
+          $viewEl.addClass('opacity-transitionable-end');
           return $viewEl.animate({
             opacity: 1
           }, animationDuration);

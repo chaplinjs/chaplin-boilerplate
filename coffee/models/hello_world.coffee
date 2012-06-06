@@ -6,6 +6,9 @@ define [
 
   class HelloWorld extends Model
 
-    initialize: (attributes, options) ->
-      super
+    defaults:
+      message: 'Hello World!'
+
+    #initialize: (attributes, options) ->
+      #super
       #console.debug 'HelloWorld#initialize'
