@@ -16,9 +16,10 @@ This repository also contains a copy of the Chaplin library in `js/vendor/chapli
 
 ### Not a CoffeeScript user?
 
-@cpsubrian has translated the original CoffeeScript source into plain, readable,
-javascript. You can find it here: https://github.com/cpsubrian/chaplin-boilerplate/tree/plain.
-Note: Its in the `plain` branch (linked).
+Chaplin user [cpsubrian](http://github.com/cpsubrian) has translated the
+original CoffeeScript source into plain, readable, javascript. You'll find it
+in the `plainjs` directory in the ['plain' branch](https://github.com/cpsubrian/chaplin-boilerplate/tree/plain)
+of his fork.
 
 ## Architectural Documentation
 
