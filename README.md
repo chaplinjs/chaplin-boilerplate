@@ -4,6 +4,10 @@
 
 This is a boilerplate applicatoin built with [Chaplin.js](https://github.com/chaplinjs/chaplin), an application structure on top of Backbone.js.
 
+### Not a CoffeeScript user? There’s also a plain JavaScript boilerplate!
+
+If you’re not using CoffeeScript in your application, you might use the [plain, readable, JavaScript version of this boilerplate](https://github.com/chaplinjs/chaplin-boilerplate-plain).
+
 ## Running the Example
 
 The original sources are written in CoffeeScript (`coffee/` directory), but this repository already comes with the compiled JavaScripts (`js/` directory). To recompile the CoffeeScripts, you might run the command line [CoffeeScript compiler](http://coffeescript.org/) in the repository’s root directory:
@@ -13,13 +17,6 @@ coffee --bare --output js/ coffee/
 ```
 
 This repository also contains a copy of the Chaplin library in `js/vendor/chaplin.js`.
-
-### Not a CoffeeScript user?
-
-Chaplin user [cpsubrian](http://github.com/cpsubrian) has translated the
-original CoffeeScript source into plain, readable, javascript. You'll find it
-in the `plainjs` directory in the ['plain' branch](https://github.com/cpsubrian/chaplin-boilerplate/tree/plain)
-of his fork.
 
 ## Architectural Documentation
 
