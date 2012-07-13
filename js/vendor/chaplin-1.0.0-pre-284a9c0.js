@@ -1459,16 +1459,13 @@ defined (or the getView() must be overridden)');
           options = {};
         }
         route = new Route(pattern, target, options);
-        return Backbone.history.handlers.push({
-          route: route,
-          callback: route.handler
-        });
+        return Backbone.history.route(route, route.handler);
       };
 
       Router.prototype.route = function(path) {
         var handler, _i, _len, _ref;
         path = path.replace(/^(\/#|\/)/, '');
-        _ref = Backbone.history.handlers;
+        _ref = Backbone.history.handlers.slice().reverse();
         for (_i = 0, _len = _ref.length; _i < _len; _i++) {
           handler = _ref[_i];
           if (handler.route.test(path)) {
