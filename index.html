@@ -12,7 +12,7 @@
 
 <div id="page-container"></div>
 
-<script src="js/vendor/require-2.0.4.js"></script>
+<script src="js/vendor/require-2.0.6.js"></script>
 <script>
 // Configure the AMD module loader
 requirejs.config({
@@ -20,22 +20,25 @@ requirejs.config({
   baseUrl: './js/',
   // Specify the paths of vendor libraries
   paths: {
-    jquery: 'vendor/jquery-1.7.2',
+    jquery: 'vendor/jquery-1.8.2',
     underscore: 'vendor/underscore-1.3.3',
     backbone: 'vendor/backbone-0.9.2',
-    handlebars: 'vendor/handlebars-1.0.0.beta.6',
-    text: 'vendor/require-text-2.0.1',
-    chaplin: 'vendor/chaplin-1.0.0-pre-284a9c0'
+    handlebars: 'vendor/handlebars-1.0.rc.1',
+    text: 'vendor/require-text-2.0.3',
+    chaplin: 'vendor/chaplin-1.0.0-pre-59cac06'
   },
   // Underscore and Backbone are not AMD-capable per default,
   // so we need to use the AMD wrapping of RequireJS
   shim: {
+    underscore: {
+      exports: '_'
+    },
     backbone: {
       deps: ['underscore', 'jquery'],
       exports: 'Backbone'
     },
-    underscore: {
-      exports: '_'
+    handlebars: {
+      exports: 'Handlebars'
     }
   }
   // For easier development, disable browser caching
