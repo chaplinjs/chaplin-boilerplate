@@ -16,7 +16,7 @@ The original sources are written in CoffeeScript (`coffee/` directory), but this
 coffee --bare --output js/ coffee/
 ```
 
-This repository also contains a copy of the Chaplin library in `js/vendor/chaplin.js`.
+This repository also contains a copy of the Chaplin library in `js/vendor/chaplin-*.js`.
 
 ## Architectural Documentation
 
@@ -63,7 +63,7 @@ To ease the development, this repository also provides application-specific base
 
 Furthermore, `coffee/lib/support.coffee` and `coffee/lib/utils.coffee` demonstrate how to extend the feature testing and utility files of Chaplin.
 
-Last but not least, this example uses a specific `Layout` class which can be found in `coffee/views/utils.coffee`.
+Last but not least, this example uses a specific `Layout` class which can be found in `coffee/views/layout.coffee`.
 
 ## [The Cast](https://github.com/chaplinjs/chaplin/blob/master/AUTHORS.md#the-cast)
 

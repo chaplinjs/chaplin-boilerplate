@@ -2,8 +2,5 @@
 
 define(['handlebars', 'chaplin', 'lib/utils'], function(Handlebars, Chaplin, utils) {
   'use strict';
-
-  var mediator;
-  mediator = Chaplin.mediator;
   return null;
 });

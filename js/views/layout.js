@@ -14,10 +14,6 @@ define(['chaplin'], function(Chaplin) {
       return Layout.__super__.constructor.apply(this, arguments);
     }
 
-    Layout.prototype.initialize = function() {
-      return Layout.__super__.initialize.apply(this, arguments);
-    };
-
     return Layout;
 
   })(Chaplin.Layout);

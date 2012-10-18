@@ -5,6 +5,4 @@ define [
 
   class Layout extends Chaplin.Layout
 
-    initialize: ->
-      super
-      #@subscribeEvent 'startupController', @doSomething
+    # Place your application-specific Layout features here

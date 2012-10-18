@@ -1,14 +1,10 @@
 define [
   'underscore'
-  'jquery'
   'chaplin'
-], (_, jquery, Chaplin) ->
+], (_, Chaplin) ->
 
   # Application-specific utilities
   # ------------------------------
-
-  # Shortcut to the mediator
-  mediator = Chaplin.mediator
 
   # Delegate to Chaplin’s utils module
   utils = Chaplin.utils.beget Chaplin.utils

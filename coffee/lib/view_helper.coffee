@@ -8,9 +8,6 @@ define [
   # View helpers (Handlebars in this case)
   # --------------------------------------
 
-  # Shortcut to the mediator
-  mediator = Chaplin.mediator
-
   # Add application-specific Handlebars helpers
   # -------------------------------------------
 
