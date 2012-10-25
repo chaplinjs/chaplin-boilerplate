@@ -5,11 +5,8 @@ define [
 ], (Handlebars, Chaplin, utils) ->
   'use strict'
 
-  # View helpers (Handlebars in this case)
-  # --------------------------------------
-
-  # Add application-specific Handlebars helpers
-  # -------------------------------------------
+  # Application-specific Handlebars helpers
+  # ---------------------------------------
 
   # Handlebars.registerHelper 'helper_name', (options) ->
   #   'foo'

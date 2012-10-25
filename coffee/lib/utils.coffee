@@ -2,6 +2,7 @@ define [
   'underscore'
   'chaplin'
 ], (_, Chaplin) ->
+  'use strict'
 
   # Application-specific utilities
   # ------------------------------

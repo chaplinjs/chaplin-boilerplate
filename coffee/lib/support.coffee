@@ -3,7 +3,8 @@ define [
   'lib/utils'
   'chaplin'
 ], (_, utils, Chaplin) ->
-
+  'use strict'
+  
   # Application-specific feature detection
   # --------------------------------------
 
