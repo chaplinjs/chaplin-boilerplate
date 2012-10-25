@@ -16,7 +16,12 @@ The original sources are written in CoffeeScript (`coffee/` directory), but this
 coffee --bare --output js/ coffee/
 ```
 
-This repository also contains a copy of the Chaplin library in `js/vendor/chaplin-*.js`.
+Copy the contents of this folder to the document root of your favorite webserver.
+
+Visit `index.html` in your browser.  If everything is running correctly you will
+see a 'Hello World!' message render.
+
+This repository also contains a recent built of the Chaplin library in `js/vendor/chaplin-*.js`.
 
 ## Architectural Documentation
 
