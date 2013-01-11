@@ -6,7 +6,6 @@ define [
   'use strict'
 
   class View extends Chaplin.View
-
     getTemplateFunction: ->
       # Template compilation
       # --------------------
