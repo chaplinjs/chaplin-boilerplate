@@ -6,12 +6,6 @@ define [
   'use strict'
 
   class HelloWorldController extends Chaplin.Controller
-
-    title: 'Hello World'
-
-    historyURL: (params) ->
-      ''
-
     show: (params) ->
       #console.debug 'HelloWorldController#show'
       @model = new HelloWorld()
