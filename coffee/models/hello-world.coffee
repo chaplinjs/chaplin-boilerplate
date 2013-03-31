@@ -5,10 +5,9 @@ define [
   'use strict'
 
   class HelloWorld extends Model
-
     defaults:
       message: 'Hello World!'
 
-    #initialize: (attributes, options) ->
-      #super
-      #console.debug 'HelloWorld#initialize'
+    # initialize: (attributes, options) ->
+    #   super
+    #   console.debug 'HelloWorld#initialize'
