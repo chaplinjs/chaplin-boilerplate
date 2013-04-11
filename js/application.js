@@ -18,13 +18,13 @@ define(['chaplin', 'routes'], function(Chaplin, routes) {
 
     Application.prototype.initialize = function() {
       Application.__super__.initialize.apply(this, arguments);
+      this.initRouter(routes);
       this.initDispatcher({
         controllerSuffix: '-controller'
       });
       this.initLayout();
       this.initComposer();
       this.initMediator();
-      this.initRouter(routes);
       this.startRouting();
       return typeof Object.freeze === "function" ? Object.freeze(this) : void 0;
     };
