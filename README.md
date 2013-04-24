@@ -2,7 +2,7 @@
 
 # Boilerplate Application for Chaplin.js
 
-This is a boilerplate application built with [Chaplin.js](https://github.com/chaplinjs/chaplin), an application structure on top of Backbone.js.
+This is a boilerplate application built with [Chaplin.js](http://chaplinjs.org), an application structure on top of Backbone.js.
 
 ### Not a CoffeeScript user? There’s also a plain JavaScript boilerplate!
 
