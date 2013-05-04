@@ -2,7 +2,7 @@
 
 # Boilerplate Application for Chaplin.js
 
-This is a boilerplate application built with [Chaplin.js](https://github.com/chaplinjs/chaplin), an application structure on top of Backbone.js.
+This is a boilerplate application built with [Chaplin.js](http://chaplinjs.org), an application structure on top of Backbone.js.
 
 ### Not a CoffeeScript user? There’s also a plain JavaScript boilerplate!
 
@@ -10,22 +10,47 @@ If you’re not using CoffeeScript in your application, you might use the [plain
 
 ## Running the Example
 
-The original sources are written in CoffeeScript (`coffee/` directory), but this repository already comes with the compiled JavaScripts (`js/` directory). To recompile the CoffeeScripts, you might run the command line [CoffeeScript compiler](http://coffeescript.org/) in the repository’s root directory:
+The original sources are written in CoffeeScript (`coffee/` directory), but this repository
+already comes with the compiled JavaScripts (`js/` directory). To recompile the CoffeeScripts,
+you might run the command line [CoffeeScript compiler](http://coffeescript.org/) in the
+repository’s root directory:
 
 ```
 coffee --bare --output js/ coffee/
 ```
 
-Copy the contents of this folder to the document root of your favorite webserver.
+This repository also contains a recent build of the Chaplin library in `js/vendor/chaplin-*.js`.
 
-If you don’t have any, [pushserve](https://github.com/paulmillr/pushserve)
-is a suggested http server with simple syntax and HTML5 pushState support.
+To run the example, copy the contents of this folder to the document root of your
+favorite webserver. If you’re running a local webserver like Apache or Nginx, the URL is
+`http://localhost/` or similar.
+
+It is necessary that you run the example in a `http://` context. Just opening the
+`index.html` via `file://` won’t work.
+
+If you don’t have a webserver installed, [pushserve](https://github.com/paulmillr/pushserve)
+is a suggested HTTP server with simple syntax and HTML5 pushState support.
 Install it with nodejs package manager: `npm install -g pushserve` and then launch `pushserve`.
 
-Visit `index.html` in your browser. If everything is running correctly you will
-see a 'Hello World!' message render.
+If the boilerplate is running correctly, you will see a “Hello World!” message.
 
-This repository also contains a recent built of the Chaplin library in `js/vendor/chaplin-*.js`.
+If your JavaScript app is located in a subfolder on your domain, for example at
+`http://localhost/my-chaplin-app/`, you need to configure the Chaplin.Router
+accordingly. Open the `application.coffee` file and edit
+[the `initRouter` call](https://github.com/chaplinjs/chaplin-boilerplate/blob/master/coffee/application.coffee#L20-L26).
+Change the `root` option accordingly, for example:
+
+```
+this.initRouter routes, root: '/my-chaplin-app/'
+```
+
+Make sure to compile the CoffeeScripts to JavaScript before testing in the browser.
+Use the CoffeeScript compiler to watch file changes in order to recompile the changed
+`.coffee` source files automatically:
+
+```
+coffee --watch --bare --output js/ coffee/
+```
 
 ## Architectural Documentation
 
