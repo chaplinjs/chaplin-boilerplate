@@ -17,7 +17,8 @@ define(['controllers/base/controller', 'models/hello-world', 'views/hello-world-
     HelloController.prototype.show = function(params) {
       this.model = new HelloWorld();
       return this.view = new HelloWorldView({
-        model: this.model
+        model: this.model,
+        region: 'main'
       });
     };
 

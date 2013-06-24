@@ -8,7 +8,6 @@ define [
     # Automatically render after initialize.
     autoRender: true
     className: 'hello-world'
-    region: 'main'
 
     # Save the template string in a prototype property.
     # This is overwritten with the compiled template function.
