@@ -18,8 +18,6 @@ define(['views/base/view', 'text!templates/hello-world.hbs'], function(View, tem
 
     HelloWorldView.prototype.className = 'hello-world';
 
-    HelloWorldView.prototype.region = 'main';
-
     HelloWorldView.prototype.template = template;
 
     template = null;
