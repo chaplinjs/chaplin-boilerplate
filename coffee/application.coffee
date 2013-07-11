@@ -1,7 +1,6 @@
 define [
   'chaplin'
-  'routes'
-], (Chaplin, routes) ->
+], (Chaplin) ->
   'use strict'
 
   # The application object.
