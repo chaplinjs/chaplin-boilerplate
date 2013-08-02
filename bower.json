@@ -1,0 +1,20 @@
+{
+  "name": "chaplin-boilerplate",
+  "version": "0.1.0",
+  "main": "index.js",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "requirejs": "~2.1.8",
+    "chaplin": "~0.10.0",
+    "lodash": "~1.3.1",
+    "jquery": "~1.10.1",
+    "requirejs-text": "~2.0.9",
+    "handlebars": "~1.0.0"
+  }
+}

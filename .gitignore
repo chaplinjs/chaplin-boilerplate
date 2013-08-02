@@ -1,0 +1,7 @@
+git add -f bower_components/jquery/jquery.js
+git add -f bower_components/lodash/lodash.js
+git add -f bower_components/backbone/backbone.js
+git add -f bower_components/handlebars/handlebars.js
+git add -f bower_components/requirejs-text/text.js
+git add -f bower_components/chaplin/chaplin.js
+bower_components/

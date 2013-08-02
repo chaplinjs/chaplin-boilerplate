@@ -2523,7 +2523,7 @@ if (typeof define === 'function' && define.amd) {
     return loader('chaplin');
   });
 } else if (typeof module === 'object' && module && module.exports) {
-  regDeps(require('backbone').Backbone, require('underscore'));
+  regDeps(require('backbone'), require('underscore'));
   module.exports = loader('chaplin');
 } else if (typeof require === 'function') {
   regDeps(window.Backbone, window._);
