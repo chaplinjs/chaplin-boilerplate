@@ -19,7 +19,7 @@ repository’s root directory:
 coffee --bare --output js/ coffee/
 ```
 
-This repository also contains a recent build of the Chaplin library in `js/vendor/chaplin-*.js`.
+This repository also contains a recent build of the Chaplin library in `bower_components/chaplin/chaplin.js`.
 
 To run the example, copy the contents of this folder to the document root of your
 favorite webserver. If you’re running a local webserver like Apache or Nginx, the URL is
@@ -63,7 +63,7 @@ This example has a standard Chaplin MVC directory structure:
 - `coffee/controllers`
 - `coffee/libs`
 
-All vendor libraries like jQuery and Backbone are located `js/vendor/`.
+All vendor libraries like jQuery and Backbone are located `bower_components`.
 
 ### Application Startup
 
@@ -98,6 +98,12 @@ To ease the development, this repository also provides application-specific base
 Furthermore, `coffee/lib/support.coffee` and `coffee/lib/utils.coffee` demonstrate how to extend the feature testing and utility files of Chaplin.
 
 Last but not least, this example uses a specific `Layout` class which can be found in `coffee/views/layout.coffee`.
+
+### Dependency management
+
+Dependency management is handled by [Bower](http://bower.io).
+
+To install deps, execute `bower install`.
 
 ## [The Cast](https://github.com/chaplinjs/chaplin/blob/master/AUTHORS.md#the-cast)
 
