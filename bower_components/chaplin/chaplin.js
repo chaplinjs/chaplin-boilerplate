@@ -1,5 +1,5 @@
 /*!
- * Chaplin 0.10.0
+ * Chaplin 0.11.0
  *
  * Chaplin may be freely distributed under the MIT license.
  * For all details and documentation:
@@ -23,7 +23,7 @@ var loader = (function() {
   var loader = function(path) {
     if (cache.hasOwnProperty(path)) return cache[path];
     if (modules.hasOwnProperty(path)) return initModule(path, modules[path]);
-    throw new Error('Cannot find module "' + name + '"');
+    throw new Error('Cannot find module "' + path + '"');
   };
 
   loader.register = function(bundle, fn) {
@@ -69,7 +69,7 @@ module.exports = Application = (function() {
 
   Application.prototype.composer = null;
 
-  Application.prototype.initialized = false;
+  Application.prototype.started = false;
 
   function Application(options) {
     if (options == null) {
@@ -82,17 +82,15 @@ module.exports = Application = (function() {
     if (options == null) {
       options = {};
     }
-    if (this.initialized) {
-      throw new Error('Application#initialize: App was already initialized');
+    if (this.started) {
+      throw new Error('Application#initialize: App was already started');
     }
     this.initRouter(options.routes, options);
     this.initDispatcher(options);
     this.initLayout(options);
     this.initComposer(options);
     this.initMediator();
-    this.startRouting();
-    this.initialized = true;
-    return typeof Object.freeze === "function" ? Object.freeze(this) : void 0;
+    return this.start();
   };
 
   Application.prototype.initDispatcher = function(options) {
@@ -126,8 +124,10 @@ module.exports = Application = (function() {
     return typeof routes === "function" ? routes(this.router.match) : void 0;
   };
 
-  Application.prototype.startRouting = function() {
-    return this.router.startHistory();
+  Application.prototype.start = function() {
+    this.router.startHistory();
+    this.started = true;
+    return typeof Object.freeze === "function" ? Object.freeze(this) : void 0;
   };
 
   Application.prototype.disposed = false;
@@ -160,9 +160,12 @@ module.exports = Application = (function() {
 });;loader.register('chaplin/mediator', function(e, r, module) {
 'use strict';
 
-var Backbone, mediator, support, utils;
+var Backbone, handlers, mediator, support, utils, _,
+  __slice = [].slice;
 
 Backbone = loader('backbone');
+
+_ = loader('underscore');
 
 support = loader('chaplin/lib/support');
 
@@ -178,7 +181,54 @@ mediator.publish = Backbone.Events.trigger;
 
 mediator._callbacks = null;
 
-utils.readonly(mediator, 'subscribe', 'unsubscribe', 'publish');
+handlers = mediator._handlers = {};
+
+mediator.setHandler = function(name, method, instance) {
+  return handlers[name] = {
+    instance: instance,
+    method: method
+  };
+};
+
+mediator.execute = function() {
+  var args, handler, name, nameOrObj, silent;
+  nameOrObj = arguments[0], args = 2 <= arguments.length ? __slice.call(arguments, 1) : [];
+  silent = false;
+  if (typeof nameOrObj === 'object') {
+    silent = nameOrObj.silent;
+    name = nameOrObj.name;
+  } else {
+    name = nameOrObj;
+  }
+  handler = handlers[name];
+  if (handler) {
+    return handler.method.apply(handler.instance, args);
+  } else if (!silent) {
+    throw new Error("mediator.execute: " + name + " handler is not defined");
+  }
+};
+
+mediator.removeHandlers = function(instanceOrNames) {
+  var handler, name, _i, _len;
+  if (!instanceOrNames) {
+    mediator._handlers = {};
+  }
+  if (_.isArray(instanceOrNames)) {
+    for (_i = 0, _len = instanceOrNames.length; _i < _len; _i++) {
+      name = instanceOrNames[_i];
+      delete handlers[name];
+    }
+  } else {
+    for (name in handlers) {
+      handler = handlers[name];
+      if (handler.instance === instanceOrNames) {
+        delete handlers[name];
+      }
+    }
+  }
+};
+
+utils.readonly(mediator, 'subscribe', 'unsubscribe', 'publish', 'setHandler', 'execute', 'removeHandlers');
 
 mediator.seal = function() {
   if (support.propertyDescriptors && Object.seal) {
@@ -193,11 +243,13 @@ module.exports = mediator;
 });;loader.register('chaplin/dispatcher', function(e, r, module) {
 'use strict';
 
-var Backbone, Dispatcher, EventBroker, utils, _;
+var Backbone, Dispatcher, EventBroker, mediator, utils, _;
 
 _ = loader('underscore');
 
 Backbone = loader('backbone');
+
+mediator = loader('chaplin/mediator');
 
 utils = loader('chaplin/lib/utils');
 
@@ -320,7 +372,7 @@ module.exports = Dispatcher = (function() {
     }
     url = route.path + (route.query ? "?" + route.query : "");
     if (options.changeURL) {
-      return this.publishEvent('!router:changeURL', url, options);
+      return mediator.execute('router:changeURL', url, options);
     }
   };
 
@@ -342,11 +394,13 @@ module.exports = Dispatcher = (function() {
 });;loader.register('chaplin/composer', function(e, r, module) {
 'use strict';
 
-var Backbone, Composer, Composition, EventBroker, utils, _;
+var Backbone, Composer, Composition, EventBroker, mediator, utils, _;
 
 _ = loader('underscore');
 
 Backbone = loader('backbone');
+
+mediator = loader('chaplin/mediator');
 
 utils = loader('chaplin/lib/utils');
 
@@ -371,8 +425,8 @@ module.exports = Composer = (function() {
       options = {};
     }
     this.compositions = {};
-    this.subscribeEvent('!composer:compose', this.compose);
-    this.subscribeEvent('!composer:retrieve', this.retrieve);
+    mediator.setHandler('composer:compose', this.compose, this);
+    mediator.setHandler('composer:retrieve', this.retrieve, this);
     return this.subscribeEvent('dispatcher:dispatch', this.cleanup);
   };
 
@@ -413,7 +467,7 @@ module.exports = Composer = (function() {
   };
 
   Composer.prototype._compose = function(name, options) {
-    var composition, current;
+    var composition, current, isPromise, returned;
     if (typeof options.compose !== 'function' && !(options.composition != null)) {
       throw new Error('Composer#compose was used incorrectly');
     }
@@ -427,24 +481,33 @@ module.exports = Composer = (function() {
       }
     }
     current = this.compositions[name];
+    isPromise = false;
     if (current && current.check(composition.options)) {
       current.stale(false);
     } else {
       if (current) {
         current.dispose();
       }
-      composition.compose(composition.options);
+      returned = composition.compose(composition.options);
+      isPromise = typeof (returned != null ? returned.then : void 0) === 'function';
       composition.stale(false);
       this.compositions[name] = composition;
     }
-    return this.compositions[name];
+    if (isPromise) {
+      return returned;
+    } else {
+      return this.compositions[name].item;
+    }
   };
 
-  Composer.prototype.retrieve = function(name, callback) {
-    var active, item;
+  Composer.prototype.retrieve = function(name) {
+    var active;
     active = this.compositions[name];
-    item = (active && !active.stale() ? active.item : void 0);
-    return callback(item);
+    if (active && !active.stale()) {
+      return active.item;
+    } else {
+      return void 0;
+    }
   };
 
   Composer.prototype.cleanup = function() {
@@ -467,6 +530,7 @@ module.exports = Composer = (function() {
       return;
     }
     this.unsubscribeAllEvents();
+    mediator.removeHandlers(this);
     _ref = this.compositions;
     for (name in _ref) {
       composition = _ref[name];
@@ -484,7 +548,8 @@ module.exports = Composer = (function() {
 });;loader.register('chaplin/controllers/controller', function(e, r, module) {
 'use strict';
 
-var Backbone, Controller, EventBroker, _,
+var Backbone, Controller, EventBroker, helpers, mediator, _,
+  __slice = [].slice,
   __hasProp = {}.hasOwnProperty;
 
 _ = loader('underscore');
@@ -492,6 +557,10 @@ _ = loader('underscore');
 Backbone = loader('backbone');
 
 EventBroker = loader('chaplin/lib/event_broker');
+
+helpers = loader('chaplin/lib/helpers');
+
+mediator = loader('chaplin/mediator');
 
 module.exports = Controller = (function() {
 
@@ -514,30 +583,18 @@ module.exports = Controller = (function() {
   Controller.prototype.beforeAction = function() {};
 
   Controller.prototype.adjustTitle = function(subtitle) {
-    return this.publishEvent('!adjustTitle', subtitle);
+    return mediator.execute('adjustTitle', subtitle);
   };
 
-  Controller.prototype.compose = function(name, second, third) {
-    var item;
-    if (arguments.length === 1) {
-      item = null;
-      this.publishEvent('!composer:retrieve', name, function(composition) {
-        return item = composition;
-      });
-      return item;
-    } else {
-      return this.publishEvent('!composer:compose', name, second, third);
-    }
+  Controller.prototype.compose = function(name) {
+    var method;
+    method = arguments.length === 1 ? 'retrieve' : 'compose';
+    return mediator.execute.apply(mediator, ["composer:" + method].concat(__slice.call(arguments)));
   };
 
-  Controller.prototype.redirectTo = function(url, options) {
+  Controller.prototype.redirectTo = function(pathDesc, params, options) {
     this.redirected = true;
-    return this.publishEvent('!router:route', url, options);
-  };
-
-  Controller.prototype.redirectToRoute = function(name, params, options) {
-    this.redirected = true;
-    return this.publishEvent('!router:routeByName', name, params, options);
+    return helpers.redirectTo(pathDesc, params, options);
   };
 
   Controller.prototype.disposed = false;
@@ -720,7 +777,7 @@ module.exports = Model = (function(_super) {
 });;loader.register('chaplin/views/layout', function(e, r, module) {
 'use strict';
 
-var $, Backbone, EventBroker, Layout, View, utils, _,
+var $, Backbone, EventBroker, Layout, View, helpers, mediator, utils, _,
   __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; },
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
@@ -728,6 +785,10 @@ var $, Backbone, EventBroker, Layout, View, utils, _,
 _ = loader('underscore');
 
 Backbone = loader('backbone');
+
+mediator = loader('chaplin/mediator');
+
+helpers = loader('chaplin/lib/helpers');
 
 utils = loader('chaplin/lib/utils');
 
@@ -750,11 +811,7 @@ module.exports = Layout = (function(_super) {
   Layout.prototype.globalRegions = null;
 
   Layout.prototype.listen = {
-    'beforeControllerDispose mediator': 'scroll',
-    '!adjustTitle mediator': 'adjustTitle',
-    '!region:show mediator': 'showRegion',
-    '!region:register mediator': 'registerRegionHandler',
-    '!region:unregister mediator': 'unregisterRegionHandler'
+    'beforeControllerDispose mediator': 'scroll'
   };
 
   function Layout(options) {
@@ -769,12 +826,17 @@ module.exports = Layout = (function(_super) {
       this.regions = options.regions;
     }
     this.settings = _.defaults(options, {
-      titleTemplate: _.template("<%= subtitle %> \u2013 <%= title %>"),
+      titleTemplate: _.template("<% if (subtitle) { %><%= subtitle %> \u2013 <% } %><%= title %>"),
       openExternalToBlank: false,
       routeLinks: 'a, .go-to',
       skipRouting: '.noscript',
       scrollTo: [0, 0]
     });
+    mediator.setHandler('region:show', this.showRegion, this);
+    mediator.setHandler('region:register', this.registerRegionHandler, this);
+    mediator.setHandler('region:unregister', this.unregisterRegionHandler, this);
+    mediator.setHandler('region:find', this.regionByName, this);
+    mediator.setHandler('adjustTitle', this.adjustTitle, this);
     Layout.__super__.constructor.apply(this, arguments);
     if (this.settings.routeLinks) {
       this.startLinkRouting();
@@ -790,7 +852,8 @@ module.exports = Layout = (function(_super) {
   };
 
   Layout.prototype.adjustTitle = function(subtitle) {
-    var title;
+    var title,
+      _this = this;
     if (subtitle == null) {
       subtitle = '';
     }
@@ -798,9 +861,11 @@ module.exports = Layout = (function(_super) {
       title: this.title,
       subtitle: subtitle
     });
-    return setTimeout((function() {
-      return document.title = title;
-    }), 50);
+    setTimeout(function() {
+      document.title = title;
+      return _this.publishEvent('adjustTitle', subtitle, title);
+    }, 50);
+    return title;
   };
 
   Layout.prototype.startLinkRouting = function() {
@@ -825,7 +890,7 @@ module.exports = Layout = (function(_super) {
   };
 
   Layout.prototype.openLink = function(event) {
-    var $el, el, external, href, isAnchor, options, path, query, skipRouting, type, _ref;
+    var $el, el, external, href, isAnchor, skipRouting, type;
     if (utils.modifierKeyPressed(event)) {
       return;
     }
@@ -833,7 +898,7 @@ module.exports = Layout = (function(_super) {
     $el = $(el);
     isAnchor = el.nodeName === 'A';
     href = $el.attr('href') || $el.data('href') || null;
-    if (href === null || href === void 0 || href === '' || href.charAt(0) === '#') {
+    if (!(href != null) || href === '' || href.charAt(0) === '#') {
       return;
     }
     skipRouting = this.settings.skipRouting;
@@ -845,26 +910,13 @@ module.exports = Layout = (function(_super) {
     if (external) {
       if (this.settings.openExternalToBlank) {
         event.preventDefault();
-        window.open(el.href);
+        window.open(href);
       }
       return;
     }
-    if (isAnchor) {
-      path = el.pathname;
-      query = el.search.substring(1);
-      if (path.charAt(0) !== '/') {
-        path = "/" + path;
-      }
-    } else {
-      _ref = href.split('?'), path = _ref[0], query = _ref[1];
-      if (query == null) {
-        query = '';
-      }
-    }
-    options = {
-      query: query
-    };
-    this.publishEvent('!router:route', path, options);
+    helpers.redirectTo({
+      url: href
+    });
     event.preventDefault();
   };
 
@@ -919,15 +971,19 @@ module.exports = Layout = (function(_super) {
     });
   };
 
-  Layout.prototype.showRegion = function(name, instance) {
-    var region;
-    region = _.find(this.globalRegions, function(region) {
+  Layout.prototype.regionByName = function(name) {
+    return _.find(this.globalRegions, function(region) {
       return region.name === name && !region.instance.stale;
     });
+  };
+
+  Layout.prototype.showRegion = function(name, instance) {
+    var region;
+    region = this.regionByName(name);
     if (!region) {
       throw new Error("No region registered under " + name);
     }
-    return instance.container = region.selector === '' ? region.instance.$el : region.instance.$(region.selector);
+    return instance.container = region.selector === '' ? region.instance.$el : region.instance.noWrap ? $(region.instance.container).find(region.selector) : region.instance.$(region.selector);
   };
 
   Layout.prototype.dispose = function() {
@@ -941,6 +997,7 @@ module.exports = Layout = (function(_super) {
       prop = _ref[_i];
       delete this[prop];
     }
+    mediator.removeHandlers(this);
     return Layout.__super__.dispose.apply(this, arguments);
   };
 
@@ -951,13 +1008,15 @@ module.exports = Layout = (function(_super) {
 });;loader.register('chaplin/views/view', function(e, r, module) {
 'use strict';
 
-var $, Backbone, EventBroker, View, utils, _,
+var $, Backbone, EventBroker, View, mediator, utils, _,
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
 
 _ = loader('underscore');
 
 Backbone = loader('backbone');
+
+mediator = loader('chaplin/mediator');
 
 utils = loader('chaplin/lib/utils');
 
@@ -971,8 +1030,6 @@ module.exports = View = (function(_super) {
 
   _.extend(View.prototype, EventBroker);
 
-  View.prototype.keepElement = false;
-
   View.prototype.autoRender = false;
 
   View.prototype.autoAttach = true;
@@ -985,17 +1042,23 @@ module.exports = View = (function(_super) {
 
   View.prototype.region = null;
 
+  View.prototype.stale = false;
+
+  View.prototype.noWrap = false;
+
+  View.prototype.keepElement = false;
+
   View.prototype.subviews = null;
 
   View.prototype.subviewsByName = null;
 
-  View.prototype.stale = false;
+  View.prototype.optionNames = ['autoAttach', 'autoRender', 'container', 'containerMethod', 'region', 'regions', 'noWrap'];
 
   function View(options) {
-    var render,
+    var region, render,
       _this = this;
     if (options) {
-      _.extend(this, _.pick(options, ['autoAttach', 'autoRender', 'container', 'containerMethod', 'region', 'regions']));
+      _.extend(this, _.pick(options, this.optionNames));
     }
     render = this.render;
     this.render = function() {
@@ -1010,6 +1073,17 @@ module.exports = View = (function(_super) {
     };
     this.subviews = [];
     this.subviewsByName = {};
+    if (this.noWrap) {
+      if (this.region) {
+        region = mediator.execute('region:find', this.region);
+        if (region != null) {
+          this.el = region.instance.container != null ? region.instance.region != null ? $(region.instance.container).find(region.selector) : region.instance.container : region.instance.$(region.selector);
+        }
+      }
+      if (this.container) {
+        this.el = this.container;
+      }
+    }
     View.__super__.constructor.apply(this, arguments);
     this.delegateListeners();
     if (this.model) {
@@ -1023,7 +1097,7 @@ module.exports = View = (function(_super) {
       });
     }
     if (this.regions != null) {
-      this.publishEvent('!region:register', this);
+      mediator.execute('region:register', this);
     }
     if (this.autoRender) {
       this.render();
@@ -1162,15 +1236,18 @@ module.exports = View = (function(_super) {
   };
 
   View.prototype.registerRegion = function(name, selector) {
-    return this.publishEvent('!region:register', this, name, selector);
+    return mediator.execute('region:register', this, name, selector);
   };
 
   View.prototype.unregisterRegion = function(name) {
-    return this.publishEvent('!region:unregister', this, name);
+    return mediator.execute('region:unregister', this, name);
   };
 
   View.prototype.unregisterAllRegions = function() {
-    return this.publishEvent('!region:unregister', this);
+    return mediator.execute({
+      name: 'region:unregister',
+      silent: true
+    }, this);
   };
 
   View.prototype.subview = function(name, view) {
@@ -1238,23 +1315,32 @@ module.exports = View = (function(_super) {
   };
 
   View.prototype.render = function() {
-    var html, templateFunc;
+    var $templateHtml, html, templateFunc;
     if (this.disposed) {
       return false;
     }
     templateFunc = this.getTemplateFunction();
     if (typeof templateFunc === 'function') {
       html = templateFunc(this.getTemplateData());
-      this.$el.html(html);
+      if (!this.noWrap) {
+        this.$el.html(html);
+      } else {
+        $templateHtml = $(html);
+        if ($templateHtml.length > 1) {
+          throw new Error('There must be a single top-level element when ' + 'using `noWrap`.');
+        }
+        this.undelegateEvents();
+        this.setElement($templateHtml, true);
+      }
     }
     return this;
   };
 
   View.prototype.attach = function() {
     if (this.region != null) {
-      this.publishEvent('!region:show', this.region, this);
+      mediator.execute('region:show', this.region, this);
     }
-    if (this.container) {
+    if (this.container && !document.body.contains(this.el)) {
       $(this.container)[this.containerMethod](this.el);
       return this.trigger('addedToDOM');
     }
@@ -1351,6 +1437,8 @@ module.exports = CollectionView = (function(_super) {
 
   CollectionView.prototype.visibleItems = null;
 
+  CollectionView.prototype.optionNames = View.prototype.optionNames.concat(['renderItems', 'itemView']);
+
   function CollectionView(options) {
     this.renderAllItems = __bind(this.renderAllItems, this);
 
@@ -1361,9 +1449,6 @@ module.exports = CollectionView = (function(_super) {
     this.itemRemoved = __bind(this.itemRemoved, this);
 
     this.itemAdded = __bind(this.itemAdded, this);
-    if (options) {
-      _.extend(this, _.pick(options, ['renderItems', 'itemView']));
-    }
     this.visibleItems = [];
     CollectionView.__super__.constructor.apply(this, arguments);
   }
@@ -1659,7 +1744,7 @@ module.exports = CollectionView = (function(_super) {
 });;loader.register('chaplin/lib/route', function(e, r, module) {
 'use strict';
 
-var Backbone, Controller, EventBroker, Route, _,
+var Backbone, Controller, EventBroker, Route, utils, _,
   __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; },
   __hasProp = {}.hasOwnProperty;
 
@@ -1670,6 +1755,8 @@ Backbone = loader('backbone');
 EventBroker = loader('chaplin/lib/event_broker');
 
 Controller = loader('chaplin/controllers/controller');
+
+utils = loader('chaplin/lib/utils');
 
 module.exports = Route = (function() {
   var escapeRegExp;
@@ -1714,52 +1801,100 @@ module.exports = Route = (function() {
   }
 
   Route.prototype.matches = function(criteria) {
-    var name, property, _i, _len, _ref;
+    var invalidParamsCount, name, propertiesCount, property, _i, _len, _ref;
     if (typeof criteria === 'string') {
       return criteria === this.name;
     } else {
+      propertiesCount = 0;
       _ref = ['name', 'action', 'controller'];
       for (_i = 0, _len = _ref.length; _i < _len; _i++) {
         name = _ref[_i];
+        propertiesCount++;
         property = criteria[name];
         if (property && property !== this[name]) {
           return false;
         }
       }
-      return true;
+      invalidParamsCount = propertiesCount === 1 && (name === 'action' || name === 'controller');
+      return !invalidParamsCount;
     }
   };
 
-  Route.prototype.reverse = function(params) {
-    var index, name, url, value, _i, _len, _ref;
+  Route.prototype.reverse = function(params, query) {
+    var name, url, value, _i, _len, _ref;
+    params = this.normalizeParams(params);
+    if (params === false) {
+      return false;
+    }
     url = this.pattern;
+    _ref = this.paramNames;
+    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+      name = _ref[_i];
+      value = params[name];
+      url = url.replace(RegExp("[:*]" + name, "g"), value);
+    }
+    if (!query) {
+      return url;
+    }
+    if (typeof query === 'object') {
+      return url += '?' + utils.queryParams.stringify(query);
+    } else {
+      return url += (query[0] === '?' ? '' : '?') + query;
+    }
+  };
+
+  Route.prototype.normalizeParams = function(params) {
+    var paramIndex, paramName, paramsHash, _i, _len, _ref;
     if (_.isArray(params)) {
       if (params.length < this.paramNames.length) {
         return false;
       }
-      index = 0;
-      url = url.replace(/[:*][^\/\?]+/g, function(match) {
-        var result;
-        result = params[index];
-        index += 1;
-        return result;
-      });
-    } else {
+      paramsHash = {};
       _ref = this.paramNames;
-      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-        name = _ref[_i];
-        value = params[name];
-        if (value === void 0) {
-          return false;
-        }
-        url = url.replace(RegExp("[:*]" + name, "g"), value);
+      for (paramIndex = _i = 0, _len = _ref.length; _i < _len; paramIndex = ++_i) {
+        paramName = _ref[paramIndex];
+        paramsHash[paramName] = params[paramIndex];
+      }
+      if (!this.testConstraints(paramsHash)) {
+        return false;
+      }
+      params = paramsHash;
+    } else {
+      if (params == null) {
+        params = {};
+      }
+      if (!this.testParams(params)) {
+        return false;
       }
     }
-    if (this.test(url)) {
-      return url;
-    } else {
-      return false;
+    return params;
+  };
+
+  Route.prototype.testConstraints = function(params) {
+    var constraint, constraints, name;
+    constraints = this.options.constraints;
+    if (constraints) {
+      for (name in constraints) {
+        if (!__hasProp.call(constraints, name)) continue;
+        constraint = constraints[name];
+        if (!constraint.test(params[name])) {
+          return false;
+        }
+      }
     }
+    return true;
+  };
+
+  Route.prototype.testParams = function(params) {
+    var paramName, _i, _len, _ref;
+    _ref = this.paramNames;
+    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+      paramName = _ref[_i];
+      if (params[paramName] === void 0) {
+        return false;
+      }
+    }
+    return this.testConstraints(params);
   };
 
   Route.prototype.createRegExp = function() {
@@ -1778,30 +1913,35 @@ module.exports = Route = (function() {
   };
 
   Route.prototype.test = function(path) {
-    var constraint, constraints, matched, name, params;
+    var constraints, matched;
     matched = this.regExp.test(path);
     if (!matched) {
       return false;
     }
     constraints = this.options.constraints;
     if (constraints) {
-      params = this.extractParams(path);
-      for (name in constraints) {
-        if (!__hasProp.call(constraints, name)) continue;
-        constraint = constraints[name];
-        if (!constraint.test(params[name])) {
-          return false;
-        }
-      }
+      return this.testConstraints(this.extractParams(path));
     }
     return true;
   };
 
-  Route.prototype.handler = function(path, options) {
-    var params, query, route, _ref;
+  Route.prototype.handler = function(pathParams, options) {
+    var actionParams, params, path, query, route, _ref;
     options = options ? _.clone(options) : {};
-    query = (_ref = options.query) != null ? _ref : this.getCurrentQuery();
-    params = this.buildParams(path, query);
+    if (typeof pathParams === 'object') {
+      query = utils.queryParams.stringify(options.query);
+      params = pathParams;
+      path = this.reverse(params);
+    } else {
+      _ref = pathParams.split('?'), path = _ref[0], query = _ref[1];
+      if (!(query != null)) {
+        query = '';
+      } else {
+        options.query = utils.queryParams.parse(query);
+      }
+      params = this.extractParams(path);
+    }
+    actionParams = _.extend({}, params, this.options.params);
     route = {
       path: path,
       action: this.action,
@@ -1809,16 +1949,7 @@ module.exports = Route = (function() {
       name: this.name,
       query: query
     };
-    delete options.query;
-    return this.publishEvent('router:match', route, params, options);
-  };
-
-  Route.prototype.getCurrentQuery = function() {
-    return location.search.substring(1);
-  };
-
-  Route.prototype.buildParams = function(path, query) {
-    return _.extend({}, this.extractQueryParams(query), this.extractParams(path), this.options.params);
+    return this.publishEvent('router:match', route, actionParams, options);
   };
 
   Route.prototype.extractParams = function(path) {
@@ -1834,38 +1965,6 @@ module.exports = Route = (function() {
     return params;
   };
 
-  Route.prototype.extractQueryParams = function(query) {
-    var current, field, pair, pairs, params, value, _i, _len, _ref;
-    params = {};
-    if (!query) {
-      return params;
-    }
-    pairs = query.split('&');
-    for (_i = 0, _len = pairs.length; _i < _len; _i++) {
-      pair = pairs[_i];
-      if (!pair.length) {
-        continue;
-      }
-      _ref = pair.split('='), field = _ref[0], value = _ref[1];
-      if (!field.length) {
-        continue;
-      }
-      field = decodeURIComponent(field);
-      value = decodeURIComponent(value);
-      current = params[field];
-      if (current) {
-        if (current.push) {
-          current.push(value);
-        } else {
-          params[field] = [current, value];
-        }
-      } else {
-        params[field] = value;
-      }
-    }
-    return params;
-  };
-
   return Route;
 
 })();
@@ -1873,14 +1972,18 @@ module.exports = Route = (function() {
 });;loader.register('chaplin/lib/router', function(e, r, module) {
 'use strict';
 
-var Backbone, EventBroker, Route, Router, utils, _,
+var Backbone, EventBroker, History, Route, Router, mediator, utils, _,
   __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
 
 _ = loader('underscore');
 
 Backbone = loader('backbone');
 
+mediator = loader('chaplin/mediator');
+
 EventBroker = loader('chaplin/lib/event_broker');
+
+History = loader('chaplin/lib/history');
 
 Route = loader('chaplin/lib/route');
 
@@ -1893,25 +1996,37 @@ module.exports = Router = (function() {
   _.extend(Router.prototype, EventBroker);
 
   function Router(options) {
+    var isWebFile;
     this.options = options != null ? options : {};
-    this.route = __bind(this.route, this);
-
     this.match = __bind(this.match, this);
 
+    isWebFile = window.location.protocol !== 'file:';
     _.defaults(this.options, {
-      pushState: true,
+      pushState: isWebFile,
       root: '/'
     });
     this.removeRoot = new RegExp('^' + utils.escapeRegExp(this.options.root) + '(#)?');
-    this.subscribeEvent('!router:route', this.routeHandler);
-    this.subscribeEvent('!router:routeByName', this.routeByNameHandler);
-    this.subscribeEvent('!router:reverse', this.reverseHandler);
-    this.subscribeEvent('!router:changeURL', this.changeURLHandler);
+    this.subscribeEvent('!router:route', this.oldEventError);
+    this.subscribeEvent('!router:routeByName', this.oldEventError);
+    this.subscribeEvent('!router:changeURL', this.oldURLEventError);
+    mediator.setHandler('router:route', this.route, this);
+    mediator.setHandler('router:reverse', this.reverse, this);
+    mediator.setHandler('router:changeURL', this.changeURL, this);
     this.createHistory();
   }
 
+  Router.prototype.oldEventError = function() {
+    throw new Error('!router:route and !router:routeByName events were removed.\
+  Use `Chaplin.helpers.redirectTo`');
+  };
+
+  Router.prototype.oldURLEventError = function() {
+    throw new Error('!router:changeURL event was removed.\
+  Use mediator.execute("router:changeURL")');
+  };
+
   Router.prototype.createHistory = function() {
-    return Backbone.history || (Backbone.history = new Backbone.History());
+    return Backbone.history = new History();
   };
 
   Router.prototype.startHistory = function() {
@@ -1950,25 +2065,43 @@ module.exports = Router = (function() {
     return route;
   };
 
-  Router.prototype.route = function(path, options) {
-    var handler, _i, _len, _ref;
-    options = options ? _.clone(options) : {};
-    _.defaults(options, {
-      changeURL: true
-    });
-    path = path.replace(this.removeRoot, '');
-    _ref = Backbone.history.handlers;
-    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-      handler = _ref[_i];
-      if (handler.route.test(path)) {
-        handler.callback(path, options);
-        return true;
-      }
+  Router.prototype.route = function(pathDesc, params, options) {
+    var handler, path;
+    params = params ? _.clone(params) : {};
+    if (typeof pathDesc === 'object') {
+      path = pathDesc.url;
     }
-    throw new Error('Router#route: request was not routed');
+    if (path != null) {
+      path = path.replace(this.removeRoot, '');
+      handler = _.find(Backbone.history.handlers, function(handler) {
+        return handler.route.test(path);
+      });
+      options = params;
+      params = null;
+    } else {
+      options = options ? _.clone(options) : {};
+      handler = _.find(Backbone.history.handlers, function(handler) {
+        if (handler.route.matches(pathDesc)) {
+          params = handler.route.normalizeParams(params);
+          if (params) {
+            return true;
+          }
+        }
+        return false;
+      });
+    }
+    if (handler) {
+      _.defaults(options, {
+        changeURL: true
+      });
+      handler.callback(path || params, options);
+      return true;
+    } else {
+      throw new Error('Router#route: request was not routed');
+    }
   };
 
-  Router.prototype.reverse = function(criteria, params) {
+  Router.prototype.reverse = function(criteria, params, query) {
     var handler, handlers, reversed, root, url, _i, _len;
     root = this.options.root;
     if ((params != null) && typeof params !== 'object') {
@@ -1980,33 +2113,13 @@ module.exports = Router = (function() {
       if (!(handler.route.matches(criteria))) {
         continue;
       }
-      reversed = handler.route.reverse(params);
+      reversed = handler.route.reverse(params, query);
       if (reversed !== false) {
         url = root ? root + reversed : reversed;
         return url;
       }
     }
     throw new Error('Router#reverse: invalid route specified');
-  };
-
-  Router.prototype.routeHandler = function(path, options) {
-    if (typeof options === 'function') {
-      options = {};
-    }
-    return this.route(path, options);
-  };
-
-  Router.prototype.routeByNameHandler = function(name, params, options, callback) {
-    var path;
-    if (arguments.length === 3 && typeof options === 'function') {
-      options = {};
-    }
-    path = this.reverse(name, params);
-    return this.route(path, options);
-  };
-
-  Router.prototype.reverseHandler = function(name, params, callback) {
-    return callback(this.reverse(name, params));
   };
 
   Router.prototype.changeURL = function(url, options) {
@@ -2021,10 +2134,6 @@ module.exports = Router = (function() {
     return Backbone.history.navigate(url, navigateOptions);
   };
 
-  Router.prototype.changeURLHandler = function(url, options) {
-    return this.changeURL(url, options);
-  };
-
   Router.prototype.disposed = false;
 
   Router.prototype.dispose = function() {
@@ -2034,6 +2143,7 @@ module.exports = Router = (function() {
     this.stopHistory();
     delete Backbone.history;
     this.unsubscribeAllEvents();
+    mediator.removeHandlers(this);
     this.disposed = true;
     return typeof Object.freeze === "function" ? Object.freeze(this) : void 0;
   };
@@ -2041,6 +2151,98 @@ module.exports = Router = (function() {
   return Router;
 
 })();
+
+});;loader.register('chaplin/lib/history', function(e, r, module) {
+'use strict';
+
+var Backbone, History, isExplorer, rootStripper, routeStripper, trailingSlash, _,
+  __hasProp = {}.hasOwnProperty,
+  __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
+  __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
+
+_ = loader('underscore');
+
+Backbone = loader('backbone');
+
+routeStripper = /^[#\/]|\s+$/g;
+
+rootStripper = /^\/+|\/+$/g;
+
+isExplorer = /msie [\w.]+/;
+
+trailingSlash = /\/$/;
+
+module.exports = History = (function(_super) {
+
+  __extends(History, _super);
+
+  function History() {
+    return History.__super__.constructor.apply(this, arguments);
+  }
+
+  History.prototype.getFragment = function(fragment, forcePushState) {
+    var root;
+    if (!(fragment != null)) {
+      if (this._hasPushState || !this._wantsHashChange || forcePushState) {
+        fragment = this.location.pathname + this.location.search;
+        root = this.root.replace(trailingSlash, '');
+        if (!fragment.indexOf(root)) {
+          fragment = fragment.substr(root.length);
+        }
+      } else {
+        fragment = this.getHash();
+      }
+    }
+    return fragment.replace(routeStripper, '');
+  };
+
+  History.prototype.start = function(options) {
+    var atRoot, docMode, fragment, loc, oldIE;
+    if (Backbone.History.started) {
+      throw new Error('Backbone.history has already been started');
+    }
+    Backbone.History.started = true;
+    this.options = _.extend({}, {
+      root: '/'
+    }, this.options, options);
+    this.root = this.options.root;
+    this._wantsHashChange = this.options.hashChange !== false;
+    this._wantsPushState = !!this.options.pushState;
+    this._hasPushState = !!(this.options.pushState && this.history && this.history.pushState);
+    fragment = this.getFragment();
+    docMode = document.documentMode;
+    oldIE = isExplorer.exec(navigator.userAgent.toLowerCase()) && (!docMode || docMode <= 7);
+    this.root = ('/' + this.root + '/').replace(rootStripper, '/');
+    if (oldIE && this._wantsHashChange) {
+      this.iframe = Backbone.$('<iframe src="javascript:0" tabindex="-1" />').hide().appendTo('body')[0].contentWindow;
+      this.navigate(fragment);
+    }
+    if (this._hasPushState) {
+      Backbone.$(window).on('popstate', this.checkUrl);
+    } else if (this._wantsHashChange && __indexOf.call(window, 'onhashchange') >= 0 && !oldIE) {
+      Backbone.$(window).on('hashchange', this.checkUrl);
+    } else if (this._wantsHashChange) {
+      this._checkUrlInterval = setInterval(this.checkUrl, this.interval);
+    }
+    this.fragment = fragment;
+    loc = this.location;
+    atRoot = loc.pathname.replace(/[^\/]$/, '$&/') === this.root;
+    if (this._wantsHashChange && this._wantsPushState && !this._hasPushState && !atRoot) {
+      this.fragment = this.getFragment(null, true);
+      this.location.replace(this.root + '#' + this.fragment);
+      return true;
+    } else if (this._wantsPushState && this._hasPushState && atRoot && loc.hash) {
+      this.fragment = this.getHash().replace(routeStripper, '');
+      this.history.replaceState({}, document.title, this.root + this.fragment);
+    }
+    if (!this.options.silent) {
+      return this.loadUrl();
+    }
+  };
+
+  return History;
+
+})(Backbone.History);
 
 });;loader.register('chaplin/lib/delayer', function(e, r, module) {
 'use strict';
@@ -2373,7 +2575,8 @@ module.exports = SyncMachine;
 
 var support, utils, _,
   __slice = [].slice,
-  __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
+  __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; },
+  __hasProp = {}.hasOwnProperty;
 
 _ = loader('underscore');
 
@@ -2426,12 +2629,12 @@ utils = {
     }
   })(),
   getPrototypeChain: function(object) {
-    var chain, _ref;
+    var chain, _ref, _ref1, _ref2;
     chain = [object.constructor.prototype];
-    while (object = (_ref = object.constructor) != null ? _ref.__super__ : void 0) {
+    while (object = (_ref = (_ref1 = object.constructor) != null ? _ref1.__super__ : void 0) != null ? _ref : (_ref2 = object.constructor) != null ? _ref2.superclass : void 0) {
       chain.push(object);
     }
-    return chain;
+    return chain.reverse();
   },
   getAllPropertyVersions: function(object, property) {
     var proto, result, value, _i, _len, _ref;
@@ -2444,7 +2647,7 @@ utils = {
         result.push(value);
       }
     }
-    return result.reverse();
+    return result;
   },
   upcase: function(str) {
     return str.charAt(0).toUpperCase() + str.substring(1);
@@ -2454,6 +2657,57 @@ utils = {
   },
   modifierKeyPressed: function(event) {
     return event.shiftKey || event.altKey || event.ctrlKey || event.metaKey;
+  },
+  queryParams: {
+    stringify: function(queryParams) {
+      var arrParam, encodedKey, key, query, value, _i, _len;
+      query = '';
+      for (key in queryParams) {
+        if (!__hasProp.call(queryParams, key)) continue;
+        value = queryParams[key];
+        encodedKey = encodeURIComponent(key);
+        if (_.isArray(value)) {
+          for (_i = 0, _len = value.length; _i < _len; _i++) {
+            arrParam = value[_i];
+            query += '&' + encodedKey + '=' + encodeURIComponent(arrParam);
+          }
+        } else {
+          query += '&' + encodedKey + '=' + encodeURIComponent(value);
+        }
+      }
+      return query && query.substring(1);
+    },
+    parse: function(queryString) {
+      var current, field, pair, pairs, params, value, _i, _len, _ref;
+      params = {};
+      if (!queryString) {
+        return params;
+      }
+      pairs = queryString.split('&');
+      for (_i = 0, _len = pairs.length; _i < _len; _i++) {
+        pair = pairs[_i];
+        if (!pair.length) {
+          continue;
+        }
+        _ref = pair.split('='), field = _ref[0], value = _ref[1];
+        if (!field.length) {
+          continue;
+        }
+        field = decodeURIComponent(field);
+        value = decodeURIComponent(value);
+        current = params[field];
+        if (current) {
+          if (current.push) {
+            current.push(value);
+          } else {
+            params[field] = [current, value];
+          }
+        } else {
+          params[field] = value;
+        }
+      }
+      return params;
+    }
   }
 };
 
@@ -2471,13 +2725,11 @@ var helpers, mediator;
 mediator = loader('chaplin/mediator');
 
 helpers = {
-  reverse: function(routeName, params) {
-    var url;
-    url = null;
-    mediator.publish('!router:reverse', routeName, params, function(result) {
-      return url = result;
-    });
-    return url;
+  reverse: function(criteria, params, query) {
+    return mediator.execute('router:reverse', criteria, params, query);
+  },
+  redirectTo: function(pathDesc, params, options) {
+    return mediator.execute('router:route', pathDesc, params, options);
   }
 };
 

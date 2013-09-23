@@ -11,8 +11,8 @@
   ],
   "dependencies": {
     "requirejs": "~2.1.8",
-    "chaplin": "~0.10.0",
-    "lodash": "~1.3.1",
+    "chaplin": "~0.11.0",
+    "lodash": "~2.0.0",
     "jquery": "~1.10.1",
     "requirejs-text": "~2.0.9",
     "handlebars": "~1.0.0"
