@@ -1,5 +1,5 @@
 /*!
- * Chaplin 0.11.0
+ * Chaplin 0.11.3
  *
  * Chaplin may be freely distributed under the MIT license.
  * For all details and documentation:
@@ -213,7 +213,7 @@ mediator.removeHandlers = function(instanceOrNames) {
   if (!instanceOrNames) {
     mediator._handlers = {};
   }
-  if (_.isArray(instanceOrNames)) {
+  if (utils.isArray(instanceOrNames)) {
     for (_i = 0, _len = instanceOrNames.length; _i < _len; _i++) {
       name = instanceOrNames[_i];
       delete handlers[name];
@@ -269,6 +269,8 @@ module.exports = Dispatcher = (function() {
 
   Dispatcher.prototype.currentParams = null;
 
+  Dispatcher.prototype.currentQuery = null;
+
   function Dispatcher() {
     this.initialize.apply(this, arguments);
   }
@@ -287,15 +289,18 @@ module.exports = Dispatcher = (function() {
   Dispatcher.prototype.dispatch = function(route, params, options) {
     var _ref, _ref1,
       _this = this;
-    params = params ? _.clone(params) : {};
-    options = options ? _.clone(options) : {};
+    params = params ? _.extend({}, params) : {};
+    options = options ? _.extend({}, options) : {};
+    if (!(options.query != null)) {
+      options.query = {};
+    }
     if (options.changeURL !== false) {
       options.changeURL = true;
     }
     if (options.forceStartup !== true) {
       options.forceStartup = false;
     }
-    if (!options.forceStartup && ((_ref = this.currentRoute) != null ? _ref.controller : void 0) === route.controller && ((_ref1 = this.currentRoute) != null ? _ref1.action : void 0) === route.action && _.isEqual(this.currentParams, params)) {
+    if (!options.forceStartup && ((_ref = this.currentRoute) != null ? _ref.controller : void 0) === route.controller && ((_ref1 = this.currentRoute) != null ? _ref1.action : void 0) === route.action && _.isEqual(this.currentParams, params) && _.isEqual(this.currentQuery, options.query)) {
       return;
     }
     return this.loadController(route.controller, function(Controller) {
@@ -331,6 +336,7 @@ module.exports = Dispatcher = (function() {
     }
     this.currentController = controller;
     this.currentParams = params;
+    this.currentQuery = options.query;
     controller[route.action](params, route, options);
     if (controller.redirected) {
       return;
@@ -725,7 +731,7 @@ serializeAttributes = function(model, attributes, modelStack) {
 
 serializeModelAttributes = function(model, currentModel, modelStack) {
   var attributes;
-  if (model === currentModel || _.has(modelStack, model.cid)) {
+  if (model === currentModel || model.cid in modelStack) {
     return null;
   }
   attributes = typeof model.getAttributes === 'function' ? model.getAttributes() : model.attributes;
@@ -826,7 +832,11 @@ module.exports = Layout = (function(_super) {
       this.regions = options.regions;
     }
     this.settings = _.defaults(options, {
-      titleTemplate: _.template("<% if (subtitle) { %><%= subtitle %> \u2013 <% } %><%= title %>"),
+      titleTemplate: function(data) {
+        var st;
+        st = data.subtitle ? "" + data.subtitle + " \u2013 " : '';
+        return st + data.title;
+      },
       openExternalToBlank: false,
       routeLinks: 'a, .go-to',
       skipRouting: '.noscript',
@@ -871,16 +881,25 @@ module.exports = Layout = (function(_super) {
   Layout.prototype.startLinkRouting = function() {
     var route;
     route = this.settings.routeLinks;
-    if (route) {
+    if (!route) {
+      return;
+    }
+    if ($) {
       return this.$el.on('click', route, this.openLink);
+    } else {
+      return this.delegate('click', route, this.openLink);
     }
   };
 
   Layout.prototype.stopLinkRouting = function() {
     var route;
     route = this.settings.routeLinks;
-    if (route) {
-      return this.$el.off('click', route);
+    if ($) {
+      if (route) {
+        return this.$el.off('click', route);
+      }
+    } else {
+      return this.undelegate('click', route, this.openLink);
     }
   };
 
@@ -890,20 +909,19 @@ module.exports = Layout = (function(_super) {
   };
 
   Layout.prototype.openLink = function(event) {
-    var $el, el, external, href, isAnchor, skipRouting, type;
+    var el, external, href, isAnchor, skipRouting, type;
     if (utils.modifierKeyPressed(event)) {
       return;
     }
-    el = event.currentTarget;
-    $el = $(el);
+    el = $ ? event.currentTarget : event.delegateTarget;
     isAnchor = el.nodeName === 'A';
-    href = $el.attr('href') || $el.data('href') || null;
+    href = el.getAttribute('href') || el.getAttribute('data-href') || null;
     if (!(href != null) || href === '' || href.charAt(0) === '#') {
       return;
     }
     skipRouting = this.settings.skipRouting;
     type = typeof skipRouting;
-    if (type === 'function' && !skipRouting(href, el) || type === 'string' && $el.is(skipRouting)) {
+    if (type === 'function' && !skipRouting(href, el) || type === 'string' && ($ ? $(el).is(skipRouting) : Backbone.utils.matchesSelector(el, skipRouting))) {
       return;
     }
     external = isAnchor && this.isExternalLink(el);
@@ -958,23 +976,47 @@ module.exports = Layout = (function(_super) {
   };
 
   Layout.prototype.unregisterGlobalRegion = function(instance, name) {
-    var cid;
+    var cid, region;
     cid = instance.cid;
-    return this.globalRegions = _.filter(this.globalRegions, function(region) {
-      return region.instance.cid !== cid || region.name !== name;
-    });
+    return this.globalRegions = (function() {
+      var _i, _len, _ref, _results;
+      _ref = this.globalRegions;
+      _results = [];
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        region = _ref[_i];
+        if (region.instance.cid !== cid || region.name !== name) {
+          _results.push(region);
+        }
+      }
+      return _results;
+    }).call(this);
   };
 
   Layout.prototype.unregisterGlobalRegions = function(instance) {
-    return this.globalRegions = _.filter(this.globalRegions, function(region) {
-      return region.instance.cid !== instance.cid;
-    });
+    var region;
+    return this.globalRegions = (function() {
+      var _i, _len, _ref, _results;
+      _ref = this.globalRegions;
+      _results = [];
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        region = _ref[_i];
+        if (region.instance.cid !== instance.cid) {
+          _results.push(region);
+        }
+      }
+      return _results;
+    }).call(this);
   };
 
   Layout.prototype.regionByName = function(name) {
-    return _.find(this.globalRegions, function(region) {
-      return region.name === name && !region.instance.stale;
-    });
+    var reg, _i, _len, _ref;
+    _ref = this.globalRegions;
+    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+      reg = _ref[_i];
+      if (reg.name === name && !reg.instance.stale) {
+        return reg;
+      }
+    }
   };
 
   Layout.prototype.showRegion = function(name, instance) {
@@ -983,7 +1025,7 @@ module.exports = Layout = (function(_super) {
     if (!region) {
       throw new Error("No region registered under " + name);
     }
-    return instance.container = region.selector === '' ? region.instance.$el : region.instance.noWrap ? $(region.instance.container).find(region.selector) : region.instance.$(region.selector);
+    return instance.container = region.selector === '' ? $ ? region.instance.$el : region.instance.el : region.instance.noWrap ? $ ? $(region.instance.container).find(region.selector) : region.instance.container.querySelector(region.selector) : region.instance[$ ? '$' : 'find'](region.selector);
   };
 
   Layout.prototype.dispose = function() {
@@ -1008,9 +1050,10 @@ module.exports = Layout = (function(_super) {
 });;loader.register('chaplin/views/view', function(e, r, module) {
 'use strict';
 
-var $, Backbone, EventBroker, View, mediator, utils, _,
+var $, Backbone, EventBroker, View, attach, bind, mediator, setHTML, utils, _,
   __hasProp = {}.hasOwnProperty,
-  __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
+  __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
+  __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
 
 _ = loader('underscore');
 
@@ -1018,11 +1061,57 @@ Backbone = loader('backbone');
 
 mediator = loader('chaplin/mediator');
 
-utils = loader('chaplin/lib/utils');
-
 EventBroker = loader('chaplin/lib/event_broker');
 
+utils = loader('chaplin/lib/utils');
+
 $ = Backbone.$;
+
+bind = (function() {
+  if (Function.prototype.bind) {
+    return function(item, ctx) {
+      return item.bind(ctx);
+    };
+  } else if (_.bind) {
+    return _.bind;
+  }
+})();
+
+setHTML = (function() {
+  if ($) {
+    return function(elem, html) {
+      return elem.html(html);
+    };
+  } else {
+    return function(elem, html) {
+      return elem.innerHTML = html;
+    };
+  }
+})();
+
+attach = (function() {
+  if ($) {
+    return function(view) {
+      var actual;
+      actual = $(view.container);
+      if (typeof view.containerMethod === 'function') {
+        return view.containerMethod(actual, view.el);
+      } else {
+        return actual[view.containerMethod](view.el);
+      }
+    };
+  } else {
+    return function(view) {
+      var actual;
+      actual = typeof view.container === 'string' ? document.querySelector(view.container) : view.container;
+      if (typeof view.containerMethod === 'function') {
+        return view.containerMethod(actual, view.el);
+      } else {
+        return actual[view.containerMethod](view.el);
+      }
+    };
+  }
+})();
 
 module.exports = View = (function(_super) {
 
@@ -1036,7 +1125,7 @@ module.exports = View = (function(_super) {
 
   View.prototype.container = null;
 
-  View.prototype.containerMethod = 'append';
+  View.prototype.containerMethod = $ ? 'append' : 'appendChild';
 
   View.prototype.regions = null;
 
@@ -1055,10 +1144,15 @@ module.exports = View = (function(_super) {
   View.prototype.optionNames = ['autoAttach', 'autoRender', 'container', 'containerMethod', 'region', 'regions', 'noWrap'];
 
   function View(options) {
-    var region, render,
+    var optName, optValue, region, render,
       _this = this;
     if (options) {
-      _.extend(this, _.pick(options, this.optionNames));
+      for (optName in options) {
+        optValue = options[optName];
+        if (__indexOf.call(this.optionNames, optName) >= 0) {
+          this[optName] = optValue;
+        }
+      }
     }
     render = this.render;
     this.render = function() {
@@ -1105,8 +1199,10 @@ module.exports = View = (function(_super) {
   }
 
   View.prototype.delegate = function(eventName, second, third) {
-    var bound, events, handler, list, selector,
-      _this = this;
+    var bound, event, events, handler, list, selector;
+    if (Backbone.View.prototype.delegate) {
+      return View.__super__.delegate.apply(this, arguments);
+    }
     if (typeof eventName !== 'string') {
       throw new TypeError('View#delegate: first argument must be a string');
     }
@@ -1124,17 +1220,27 @@ module.exports = View = (function(_super) {
     if (typeof handler !== 'function') {
       throw new TypeError('View#delegate: ' + 'handler argument must be function');
     }
-    list = _.map(eventName.split(' '), function(event) {
-      return "" + event + ".delegate" + _this.cid;
-    });
+    list = (function() {
+      var _i, _len, _ref, _results;
+      _ref = eventName.split(' ');
+      _results = [];
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        event = _ref[_i];
+        _results.push("" + event + ".delegate" + this.cid);
+      }
+      return _results;
+    }).call(this);
     events = list.join(' ');
-    bound = _.bind(handler, this);
+    bound = bind(handler, this);
     this.$el.on(events, selector || null, bound);
     return bound;
   };
 
   View.prototype._delegateEvents = function(events) {
     var bound, eventName, handler, key, match, selector, value;
+    if (Backbone.View.prototype.delegateEvents.length === 2) {
+      return Backbone.View.prototype.delegateEvents.call(this, events, true);
+    }
     for (key in events) {
       value = events[key];
       handler = typeof value === 'function' ? value : this[value];
@@ -1144,20 +1250,18 @@ module.exports = View = (function(_super) {
       match = key.match(/^(\S+)\s*(.*)$/);
       eventName = "" + match[1] + ".delegateEvents" + this.cid;
       selector = match[2];
-      bound = _.bind(handler, this);
+      bound = bind(handler, this);
       this.$el.on(eventName, selector || null, bound);
     }
   };
 
-  View.prototype.delegateEvents = function(events) {
+  View.prototype.delegateEvents = function(events, keepOld) {
     var classEvents, _i, _len, _ref;
-    this.undelegateEvents();
-    if (events) {
-      this._delegateEvents(events);
-      return;
+    if (!keepOld) {
+      this.undelegateEvents();
     }
-    if (!this.events) {
-      return;
+    if (events) {
+      return this._delegateEvents(events);
     }
     _ref = utils.getAllPropertyVersions(this, 'events');
     for (_i = 0, _len = _ref.length; _i < _len; _i++) {
@@ -1170,8 +1274,10 @@ module.exports = View = (function(_super) {
   };
 
   View.prototype.undelegate = function(eventName, second, third) {
-    var events, handler, list, selector,
-      _this = this;
+    var event, events, handler, list, selector;
+    if (Backbone.View.prototype.undelegate) {
+      return View.__super__.undelegate.apply(this, arguments);
+    }
     if (eventName) {
       if (typeof eventName !== 'string') {
         throw new TypeError('View#undelegate: first argument must be a string');
@@ -1189,9 +1295,16 @@ module.exports = View = (function(_super) {
         }
         handler = third;
       }
-      list = _.map(eventName.split(' '), function(event) {
-        return "" + event + ".delegate" + _this.cid;
-      });
+      list = (function() {
+        var _i, _len, _ref, _results;
+        _ref = eventName.split(' ');
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          event = _ref[_i];
+          _results.push("" + event + ".delegate" + this.cid);
+        }
+        return _results;
+      }).call(this);
       events = list.join(' ');
       return this.$el.off(events, selector || null);
     } else {
@@ -1278,17 +1391,18 @@ module.exports = View = (function(_super) {
       view = nameOrView;
       for (otherName in byName) {
         otherView = byName[otherName];
-        if (view === otherView) {
-          name = otherName;
-          break;
+        if (!(otherView === view)) {
+          continue;
         }
+        name = otherName;
+        break;
       }
     }
     if (!(name && view && view.dispose)) {
       return;
     }
     view.dispose();
-    index = _.indexOf(subviews, view);
+    index = utils.indexOf(subviews, view);
     if (index !== -1) {
       subviews.splice(index, 1);
     }
@@ -1315,22 +1429,23 @@ module.exports = View = (function(_super) {
   };
 
   View.prototype.render = function() {
-    var $templateHtml, html, templateFunc;
+    var el, html, templateFunc;
     if (this.disposed) {
       return false;
     }
     templateFunc = this.getTemplateFunction();
     if (typeof templateFunc === 'function') {
       html = templateFunc(this.getTemplateData());
-      if (!this.noWrap) {
-        this.$el.html(html);
-      } else {
-        $templateHtml = $(html);
-        if ($templateHtml.length > 1) {
+      if (this.noWrap) {
+        el = document.createElement('div');
+        el.innerHTML = html;
+        if (el.children.length > 1) {
           throw new Error('There must be a single top-level element when ' + 'using `noWrap`.');
         }
         this.undelegateEvents();
-        this.setElement($templateHtml, true);
+        this.setElement(el.firstChild, true);
+      } else {
+        setHTML(($ ? this.$el : this.el), html);
       }
     }
     return this;
@@ -1341,7 +1456,7 @@ module.exports = View = (function(_super) {
       mediator.execute('region:show', this.region, this);
     }
     if (this.container && !document.body.contains(this.el)) {
-      $(this.container)[this.containerMethod](this.el);
+      attach(this);
       return this.trigger('addedToDOM');
     }
   };
@@ -1384,7 +1499,7 @@ module.exports = View = (function(_super) {
 });;loader.register('chaplin/views/collection_view', function(e, r, module) {
 'use strict';
 
-var $, Backbone, CollectionView, View, _,
+var $, Backbone, CollectionView, View, addClass, endAnimation, filterChildren, insertView, startAnimation, toggleElement, utils, _,
   __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; },
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
@@ -1395,7 +1510,143 @@ Backbone = loader('backbone');
 
 View = loader('chaplin/views/view');
 
+utils = loader('chaplin/lib/utils');
+
 $ = Backbone.$;
+
+filterChildren = function(nodeList, selector) {
+  var node, _i, _len, _results;
+  if (!selector) {
+    return nodeList;
+  }
+  _results = [];
+  for (_i = 0, _len = nodeList.length; _i < _len; _i++) {
+    node = nodeList[_i];
+    if (Backbone.utils.matchesSelector(node, selector)) {
+      _results.push(node);
+    }
+  }
+  return _results;
+};
+
+toggleElement = (function() {
+  if ($) {
+    return function(elem, visible) {
+      return elem.toggle(visible);
+    };
+  } else {
+    return function(elem, visible) {
+      return elem.style.display = (visible ? '' : 'none');
+    };
+  }
+})();
+
+addClass = (function() {
+  if ($) {
+    return function(elem, cls) {
+      return elem.addClass(cls);
+    };
+  } else {
+    return function(elem, cls) {
+      return elem.classList.add(cls);
+    };
+  }
+})();
+
+startAnimation = (function() {
+  if ($) {
+    return function(elem, useCssAnimation, cls) {
+      if (useCssAnimation) {
+        return addClass(elem, cls);
+      } else {
+        return elem.css('opacity', 0);
+      }
+    };
+  } else {
+    return function(elem, useCssAnimation, cls) {
+      if (useCssAnimation) {
+        return addClass(elem, cls);
+      } else {
+        return elem.style.opacity = 0;
+      }
+    };
+  }
+})();
+
+endAnimation = (function() {
+  if ($) {
+    return function(elem, duration) {
+      return elem.animate({
+        opacity: 1
+      }, duration);
+    };
+  } else {
+    return function(elem, duration) {
+      elem.style.transition = "opacity " + (duration / 1000) + "s";
+      return elem.opacity = 1;
+    };
+  }
+})();
+
+insertView = (function() {
+  if ($) {
+    return function(list, viewEl, position, length, itemSelector) {
+      var children, childrenLength, insertInMiddle, isEnd, method;
+      insertInMiddle = (0 < position && position < length);
+      isEnd = function(length) {
+        return length === 0 || position === length;
+      };
+      if (insertInMiddle || itemSelector) {
+        children = list.children(itemSelector);
+        childrenLength = children.length;
+        if (children[position] !== viewEl) {
+          if (isEnd(childrenLength)) {
+            return list.append(viewEl);
+          } else {
+            if (position === 0) {
+              return children.eq(position).before(viewEl);
+            } else {
+              return children.eq(position - 1).after(viewEl);
+            }
+          }
+        }
+      } else {
+        method = isEnd(length) ? 'append' : 'prepend';
+        return list[method](viewEl);
+      }
+    };
+  } else {
+    return function(list, viewEl, position, length, itemSelector) {
+      var children, childrenLength, insertInMiddle, isEnd, last;
+      insertInMiddle = (0 < position && position < length);
+      isEnd = function(length) {
+        return length === 0 || position === length;
+      };
+      if (insertInMiddle || itemSelector) {
+        children = filterChildren(list.children, itemSelector);
+        childrenLength = children.length;
+        if (children[position] !== viewEl) {
+          if (isEnd(childrenLength)) {
+            return list.appendChild(viewEl);
+          } else if (position === 0) {
+            return list.insertBefore(viewEl, children[position]);
+          } else {
+            last = children[position - 1];
+            if (list.lastChild === last) {
+              return list.appendChild(viewEl);
+            } else {
+              return list.insertBefore(viewEl, last.nextElementSibling);
+            }
+          }
+        }
+      } else if (isEnd(length)) {
+        return list.appendChild(viewEl);
+      } else {
+        return list.insertBefore(viewEl, list.firstChild);
+      }
+    };
+  }
+})();
 
 module.exports = CollectionView = (function(_super) {
 
@@ -1432,7 +1683,10 @@ module.exports = CollectionView = (function(_super) {
   CollectionView.prototype.filterer = null;
 
   CollectionView.prototype.filterCallback = function(view, included) {
-    return view.$el.stop(true, true).toggle(included);
+    if ($) {
+      view.$el.stop(true, true);
+    }
+    return toggleElement(($ ? view.$el : view.el), included);
   };
 
   CollectionView.prototype.visibleItems = null;
@@ -1484,7 +1738,11 @@ module.exports = CollectionView = (function(_super) {
 
   CollectionView.prototype.render = function() {
     CollectionView.__super__.render.apply(this, arguments);
-    this.$list = this.listSelector ? this.$(this.listSelector) : this.$el;
+    if ($) {
+      this.$list = this.listSelector ? this.$(this.listSelector) : this.$el;
+    } else {
+      this.list = this.listSelector ? this.find(this.listSelector) : this.el;
+    }
     this.initFallback();
     this.initLoadingIndicator();
     if (this.renderItems) {
@@ -1508,7 +1766,11 @@ module.exports = CollectionView = (function(_super) {
     if (!this.fallbackSelector) {
       return;
     }
-    this.$fallback = this.$(this.fallbackSelector);
+    if ($) {
+      this.$fallback = this.$(this.fallbackSelector);
+    } else {
+      this.fallback = this.find(this.fallbackSelector);
+    }
     this.on('visibilityChange', this.toggleFallback);
     this.listenTo(this.collection, 'syncStateChange', this.toggleFallback);
     return this.toggleFallback();
@@ -1517,14 +1779,18 @@ module.exports = CollectionView = (function(_super) {
   CollectionView.prototype.toggleFallback = function() {
     var visible;
     visible = this.visibleItems.length === 0 && (typeof this.collection.isSynced === 'function' ? this.collection.isSynced() : true);
-    return this.$fallback.toggle(visible);
+    return toggleElement(($ ? this.$fallback : this.fallback), visible);
   };
 
   CollectionView.prototype.initLoadingIndicator = function() {
     if (!(this.loadingSelector && typeof this.collection.isSyncing === 'function')) {
       return;
     }
-    this.$loading = this.$(this.loadingSelector);
+    if ($) {
+      this.$loading = this.$(this.loadingSelector);
+    } else {
+      this.loading = this.find(this.loadingSelector);
+    }
     this.listenTo(this.collection, 'syncStateChange', this.toggleLoadingIndicator);
     return this.toggleLoadingIndicator();
   };
@@ -1532,7 +1798,7 @@ module.exports = CollectionView = (function(_super) {
   CollectionView.prototype.toggleLoadingIndicator = function() {
     var visible;
     visible = this.collection.length === 0 && this.collection.isSyncing();
-    return this.$loading.toggle(visible);
+    return toggleElement(($ ? this.$loading : this.loading), visible);
   };
 
   CollectionView.prototype.getItemViews = function() {
@@ -1551,7 +1817,8 @@ module.exports = CollectionView = (function(_super) {
   };
 
   CollectionView.prototype.filter = function(filterer, filterCallback) {
-    var included, index, item, view, _i, _len, _ref;
+    var hasItemViews, included, index, item, view, _i, _len, _ref,
+      _this = this;
     this.filterer = filterer;
     if (filterCallback) {
       this.filterCallback = filterCallback;
@@ -1559,7 +1826,18 @@ module.exports = CollectionView = (function(_super) {
     if (filterCallback == null) {
       filterCallback = this.filterCallback;
     }
-    if (!_.isEmpty(this.getItemViews())) {
+    hasItemViews = (function() {
+      var name;
+      if (_this.subviews.length > 0) {
+        for (name in _this.subviewsByName) {
+          if (name.slice(0, 9) === 'itemView:') {
+            return true;
+          }
+        }
+      }
+      return false;
+    })();
+    if (hasItemViews) {
       _ref = this.collection.models;
       for (index = _i = 0, _len = _ref.length; _i < _len; index = ++_i) {
         item = _ref[index];
@@ -1623,8 +1901,8 @@ module.exports = CollectionView = (function(_super) {
   CollectionView.prototype.initItemView = function(model) {
     if (this.itemView) {
       return new this.itemView({
-        model: model,
-        autoRender: false
+        autoRender: false,
+        model: model
       });
     } else {
       throw new Error('The CollectionView#itemView property ' + 'must be defined or the initItemView() must be overridden.');
@@ -1632,7 +1910,7 @@ module.exports = CollectionView = (function(_super) {
   };
 
   CollectionView.prototype.insertView = function(item, view, position, enableAnimation) {
-    var $list, $next, $previous, $viewEl, children, childrenLength, included, insertInMiddle, isEnd, length, method, viewEl,
+    var elem, included, length, list,
       _this = this;
     if (enableAnimation == null) {
       enableAnimation = true;
@@ -1644,55 +1922,25 @@ module.exports = CollectionView = (function(_super) {
       position = this.collection.indexOf(item);
     }
     included = typeof this.filterer === 'function' ? this.filterer(item, position) : true;
-    viewEl = view.el;
-    $viewEl = view.$el;
+    elem = $ ? view.$el : view.el;
     if (included && enableAnimation) {
-      if (this.useCssAnimation) {
-        $viewEl.addClass(this.animationStartClass);
-      } else {
-        $viewEl.css('opacity', 0);
-      }
+      startAnimation(elem, this.useCssAnimation, this.animationStartClass);
     }
     if (this.filterer) {
       this.filterCallback(view, included);
     }
     length = this.collection.length;
-    insertInMiddle = (0 < position && position < length);
-    isEnd = function(length) {
-      return length === 0 || position === length;
-    };
-    $list = this.$list;
-    if (insertInMiddle || this.itemSelector) {
-      children = $list.children(this.itemSelector);
-      childrenLength = children.length;
-      if (children.get(position) !== viewEl) {
-        if (isEnd(childrenLength)) {
-          $list.append(viewEl);
-        } else {
-          if (position === 0) {
-            $next = children.eq(position);
-            $next.before(viewEl);
-          } else {
-            $previous = children.eq(position - 1);
-            $previous.after(viewEl);
-          }
-        }
-      }
-    } else {
-      method = isEnd(length) ? 'append' : 'prepend';
-      $list[method](viewEl);
-    }
+    list = $ ? this.$list : this.list;
+    insertView(list, elem, position, length, this.itemSelector);
     view.trigger('addedToParent');
     this.updateVisibleItems(item, included);
     if (included && enableAnimation) {
       if (this.useCssAnimation) {
-        setTimeout(function() {
-          return $viewEl.addClass(_this.animationEndClass);
-        }, 0);
+        setTimeout((function() {
+          return addClass(elem, _this.animationEndClass);
+        }), 0);
       } else {
-        $viewEl.animate({
-          opacity: 1
-        }, this.animationDuration);
+        endAnimation(elem, this.animationDuration);
       }
     }
     return view;
@@ -1709,7 +1957,7 @@ module.exports = CollectionView = (function(_super) {
       triggerEvent = true;
     }
     visibilityChanged = false;
-    visibleItemsIndex = _.indexOf(this.visibleItems, item);
+    visibleItemsIndex = utils.indexOf(this.visibleItems, item);
     includedInVisibleItems = visibleItemsIndex !== -1;
     if (includedInFilter && !includedInVisibleItems) {
       this.visibleItems.push(item);
@@ -1776,11 +2024,11 @@ module.exports = Route = (function() {
 
     this.addParamName = __bind(this.addParamName, this);
 
-    if (_.isRegExp(this.pattern)) {
+    if (typeof this.pattern !== 'string') {
       throw new Error('Route: RegExps are not supported.\
         Use strings with :names and `constraints` option of route');
     }
-    this.options = options ? _.clone(options) : {};
+    this.options = options ? _.extend({}, options) : {};
     if (this.options.name != null) {
       this.name = this.options.name;
     }
@@ -1791,7 +2039,7 @@ module.exports = Route = (function() {
       this.name = this.controller + '#' + this.action;
     }
     this.paramNames = [];
-    if (_.has(Controller.prototype, this.action)) {
+    if (this.action in Controller.prototype) {
       throw new Error('Route: You should not use existing controller ' + 'properties as action names');
     }
     this.createRegExp();
@@ -1821,7 +2069,7 @@ module.exports = Route = (function() {
   };
 
   Route.prototype.reverse = function(params, query) {
-    var name, url, value, _i, _len, _ref;
+    var name, queryString, url, value, _i, _len, _ref;
     params = this.normalizeParams(params);
     if (params === false) {
       return false;
@@ -1837,7 +2085,8 @@ module.exports = Route = (function() {
       return url;
     }
     if (typeof query === 'object') {
-      return url += '?' + utils.queryParams.stringify(query);
+      queryString = utils.queryParams.stringify(query);
+      return url += queryString ? '?' + queryString : '';
     } else {
       return url += (query[0] === '?' ? '' : '?') + query;
     }
@@ -1845,7 +2094,7 @@ module.exports = Route = (function() {
 
   Route.prototype.normalizeParams = function(params) {
     var paramIndex, paramName, paramsHash, _i, _len, _ref;
-    if (_.isArray(params)) {
+    if (utils.isArray(params)) {
       if (params.length < this.paramNames.length) {
         return false;
       }
@@ -1927,7 +2176,7 @@ module.exports = Route = (function() {
 
   Route.prototype.handler = function(pathParams, options) {
     var actionParams, params, path, query, route, _ref;
-    options = options ? _.clone(options) : {};
+    options = options ? _.extend({}, options) : {};
     if (typeof pathParams === 'object') {
       query = utils.queryParams.stringify(options.query);
       params = pathParams;
@@ -2039,6 +2288,17 @@ module.exports = Router = (function() {
     }
   };
 
+  Router.prototype.findHandler = function(predicate) {
+    var handler, _i, _len, _ref;
+    _ref = Backbone.history.handlers;
+    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+      handler = _ref[_i];
+      if (predicate(handler)) {
+        return handler;
+      }
+    }
+  };
+
   Router.prototype.match = function(pattern, target, options) {
     var action, controller, route, _ref;
     if (options == null) {
@@ -2067,20 +2327,20 @@ module.exports = Router = (function() {
 
   Router.prototype.route = function(pathDesc, params, options) {
     var handler, path;
-    params = params ? _.clone(params) : {};
+    params = params ? utils.isArray(params) ? params.slice() : _.extend({}, params) : {};
     if (typeof pathDesc === 'object') {
       path = pathDesc.url;
     }
     if (path != null) {
       path = path.replace(this.removeRoot, '');
-      handler = _.find(Backbone.history.handlers, function(handler) {
+      handler = this.findHandler(function(handler) {
         return handler.route.test(path);
       });
       options = params;
       params = null;
     } else {
-      options = options ? _.clone(options) : {};
-      handler = _.find(Backbone.history.handlers, function(handler) {
+      options = options ? _.extend({}, options) : {};
+      handler = this.findHandler(function(handler) {
         if (handler.route.matches(pathDesc)) {
           params = handler.route.normalizeParams(params);
           if (params) {
@@ -2157,8 +2417,7 @@ module.exports = Router = (function() {
 
 var Backbone, History, isExplorer, rootStripper, routeStripper, trailingSlash, _,
   __hasProp = {}.hasOwnProperty,
-  __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
-  __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
+  __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
 
 _ = loader('underscore');
 
@@ -2172,7 +2431,7 @@ isExplorer = /msie [\w.]+/;
 
 trailingSlash = /\/$/;
 
-module.exports = History = (function(_super) {
+History = (function(_super) {
 
   __extends(History, _super);
 
@@ -2197,7 +2456,7 @@ module.exports = History = (function(_super) {
   };
 
   History.prototype.start = function(options) {
-    var atRoot, docMode, fragment, loc, oldIE;
+    var atRoot, fragment, loc;
     if (Backbone.History.started) {
       throw new Error('Backbone.history has already been started');
     }
@@ -2207,19 +2466,13 @@ module.exports = History = (function(_super) {
     }, this.options, options);
     this.root = this.options.root;
     this._wantsHashChange = this.options.hashChange !== false;
-    this._wantsPushState = !!this.options.pushState;
-    this._hasPushState = !!(this.options.pushState && this.history && this.history.pushState);
+    this._wantsPushState = Boolean(this.options.pushState);
+    this._hasPushState = Boolean(this.options.pushState && this.history && this.history.pushState);
     fragment = this.getFragment();
-    docMode = document.documentMode;
-    oldIE = isExplorer.exec(navigator.userAgent.toLowerCase()) && (!docMode || docMode <= 7);
     this.root = ('/' + this.root + '/').replace(rootStripper, '/');
-    if (oldIE && this._wantsHashChange) {
-      this.iframe = Backbone.$('<iframe src="javascript:0" tabindex="-1" />').hide().appendTo('body')[0].contentWindow;
-      this.navigate(fragment);
-    }
     if (this._hasPushState) {
       Backbone.$(window).on('popstate', this.checkUrl);
-    } else if (this._wantsHashChange && __indexOf.call(window, 'onhashchange') >= 0 && !oldIE) {
+    } else if (this._wantsHashChange && 'onhashchange' in window) {
       Backbone.$(window).on('hashchange', this.checkUrl);
     } else if (this._wantsHashChange) {
       this._checkUrlInterval = setInterval(this.checkUrl, this.interval);
@@ -2243,6 +2496,8 @@ module.exports = History = (function(_super) {
   return History;
 
 })(Backbone.History);
+
+module.exports = Backbone.$ ? History : Backbone.History;
 
 });;loader.register('chaplin/lib/delayer', function(e, r, module) {
 'use strict';
@@ -2398,7 +2653,7 @@ module.exports = support;
 });;loader.register('chaplin/lib/composition', function(e, r, module) {
 'use strict';
 
-var Backbone, Composition, EventBroker, _,
+var Backbone, Composition, EventBroker, has, _,
   __hasProp = {}.hasOwnProperty;
 
 _ = loader('underscore');
@@ -2406,6 +2661,8 @@ _ = loader('underscore');
 Backbone = loader('backbone');
 
 EventBroker = loader('chaplin/lib/event_broker');
+
+has = Object.prototype.hasOwnProperty;
 
 module.exports = Composition = (function() {
 
@@ -2423,7 +2680,7 @@ module.exports = Composition = (function() {
 
   function Composition(options) {
     if (options != null) {
-      this.options = _.clone(options);
+      this.options = _.extend({}, options);
     }
     this.item = this;
     this.initialize(this.options);
@@ -2445,7 +2702,7 @@ module.exports = Composition = (function() {
     this._stale = value;
     for (name in this) {
       item = this[name];
-      if (item && item !== this && _.has(item, 'stale')) {
+      if (item && item !== this && typeof item === 'object' && has.call(item, 'stale')) {
         item.stale = value;
       }
     }
@@ -2595,6 +2852,16 @@ utils = {
       };
     }
   })(),
+  indexOf: (function() {
+    if (Array.prototype.indexOf) {
+      return function(list, index) {
+        return list.indexOf(index);
+      };
+    } else if (_.indexOf) {
+      return _.indexOf;
+    }
+  })(),
+  isArray: Array.isArray || _.isArray,
   serialize: function(data) {
     if (typeof data.serialize === 'function') {
       return data.serialize();
@@ -2660,19 +2927,26 @@ utils = {
   },
   queryParams: {
     stringify: function(queryParams) {
-      var arrParam, encodedKey, key, query, value, _i, _len;
+      var arrParam, encodedKey, key, query, stringifyKeyValuePair, value, _i, _len;
       query = '';
+      stringifyKeyValuePair = function(encodedKey, value) {
+        if (value != null) {
+          return '&' + encodedKey + '=' + encodeURIComponent(value);
+        } else {
+          return '';
+        }
+      };
       for (key in queryParams) {
         if (!__hasProp.call(queryParams, key)) continue;
         value = queryParams[key];
         encodedKey = encodeURIComponent(key);
-        if (_.isArray(value)) {
+        if (utils.isArray(value)) {
           for (_i = 0, _len = value.length; _i < _len; _i++) {
             arrParam = value[_i];
-            query += '&' + encodedKey + '=' + encodeURIComponent(arrParam);
+            query += stringifyKeyValuePair(encodedKey, arrParam);
           }
         } else {
-          query += '&' + encodedKey + '=' + encodeURIComponent(value);
+          query += stringifyKeyValuePair(encodedKey, value);
         }
       }
       return query && query.substring(1);
@@ -2778,7 +3052,7 @@ if (typeof define === 'function' && define.amd) {
   regDeps(require('backbone'), require('underscore'));
   module.exports = loader('chaplin');
 } else if (typeof require === 'function') {
-  regDeps(window.Backbone, window._);
+  regDeps(window.Backbone, window._ || window.Backbone.utils);
   window.Chaplin = loader('chaplin');
 } else {
   throw new Error('Chaplin requires Common.js or AMD modules');
