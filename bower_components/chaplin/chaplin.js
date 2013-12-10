@@ -1,5 +1,5 @@
 /*!
- * Chaplin 0.11.3
+ * Chaplin 0.12.0
  *
  * Chaplin may be freely distributed under the MIT license.
  * For all details and documentation:
@@ -309,13 +309,16 @@ module.exports = Dispatcher = (function() {
   };
 
   Dispatcher.prototype.loadController = function(name, handler) {
-    var fileName, moduleName;
+    var fileName, moduleName,
+      _this = this;
     fileName = name + this.settings.controllerSuffix;
     moduleName = this.settings.controllerPath + fileName;
     if (typeof define !== "undefined" && define !== null ? define.amd : void 0) {
       return require([moduleName], handler);
     } else {
-      return handler(require(moduleName));
+      return setTimeout(function() {
+        return handler(require(moduleName));
+      }, 0);
     }
   };
 
@@ -554,7 +557,7 @@ module.exports = Composer = (function() {
 });;loader.register('chaplin/controllers/controller', function(e, r, module) {
 'use strict';
 
-var Backbone, Controller, EventBroker, helpers, mediator, _,
+var Backbone, Controller, EventBroker, mediator, utils, _,
   __slice = [].slice,
   __hasProp = {}.hasOwnProperty;
 
@@ -564,7 +567,7 @@ Backbone = loader('backbone');
 
 EventBroker = loader('chaplin/lib/event_broker');
 
-helpers = loader('chaplin/lib/helpers');
+utils = loader('chaplin/lib/utils');
 
 mediator = loader('chaplin/mediator');
 
@@ -600,7 +603,7 @@ module.exports = Controller = (function() {
 
   Controller.prototype.redirectTo = function(pathDesc, params, options) {
     this.redirected = true;
-    return helpers.redirectTo(pathDesc, params, options);
+    return utils.redirectTo(pathDesc, params, options);
   };
 
   Controller.prototype.disposed = false;
@@ -783,7 +786,7 @@ module.exports = Model = (function(_super) {
 });;loader.register('chaplin/views/layout', function(e, r, module) {
 'use strict';
 
-var $, Backbone, EventBroker, Layout, View, helpers, mediator, utils, _,
+var $, Backbone, EventBroker, Layout, View, mediator, utils, _,
   __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; },
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
@@ -793,8 +796,6 @@ _ = loader('underscore');
 Backbone = loader('backbone');
 
 mediator = loader('chaplin/mediator');
-
-helpers = loader('chaplin/lib/helpers');
 
 utils = loader('chaplin/lib/utils');
 
@@ -853,7 +854,7 @@ module.exports = Layout = (function(_super) {
     }
   }
 
-  Layout.prototype.scroll = function(controller) {
+  Layout.prototype.scroll = function() {
     var position;
     position = this.settings.scrollTo;
     if (position) {
@@ -932,7 +933,7 @@ module.exports = Layout = (function(_super) {
       }
       return;
     }
-    helpers.redirectTo({
+    utils.redirectTo({
       url: href
     });
     event.preventDefault();
@@ -1200,8 +1201,8 @@ module.exports = View = (function(_super) {
 
   View.prototype.delegate = function(eventName, second, third) {
     var bound, event, events, handler, list, selector;
-    if (Backbone.View.prototype.delegate) {
-      return View.__super__.delegate.apply(this, arguments);
+    if (Backbone.utils) {
+      return Backbone.utils.delegate(this, eventName, second, third);
     }
     if (typeof eventName !== 'string') {
       throw new TypeError('View#delegate: first argument must be a string');
@@ -1275,8 +1276,8 @@ module.exports = View = (function(_super) {
 
   View.prototype.undelegate = function(eventName, second, third) {
     var event, events, handler, list, selector;
-    if (Backbone.View.prototype.undelegate) {
-      return View.__super__.undelegate.apply(this, arguments);
+    if (Backbone.utils) {
+      return Backbone.utils.undelegate(this, eventName, second, third);
     }
     if (eventName) {
       if (typeof eventName !== 'string') {
@@ -1737,11 +1738,13 @@ module.exports = CollectionView = (function(_super) {
   CollectionView.prototype.getTemplateFunction = function() {};
 
   CollectionView.prototype.render = function() {
+    var listSelector;
     CollectionView.__super__.render.apply(this, arguments);
+    listSelector = _.result(this, 'listSelector');
     if ($) {
-      this.$list = this.listSelector ? this.$(this.listSelector) : this.$el;
+      this.$list = listSelector ? this.$(listSelector) : this.$el;
     } else {
-      this.list = this.listSelector ? this.find(this.listSelector) : this.el;
+      this.list = listSelector ? this.find(this.listSelector) : this.el;
     }
     this.initFallback();
     this.initLoadingIndicator();
@@ -1819,12 +1822,11 @@ module.exports = CollectionView = (function(_super) {
   CollectionView.prototype.filter = function(filterer, filterCallback) {
     var hasItemViews, included, index, item, view, _i, _len, _ref,
       _this = this;
-    this.filterer = filterer;
-    if (filterCallback) {
-      this.filterCallback = filterCallback;
+    if (typeof filterer === 'function' || filterer === null) {
+      this.filterer = filterer;
     }
-    if (filterCallback == null) {
-      filterCallback = this.filterCallback;
+    if (typeof filterCallback === 'function' || filterCallback === null) {
+      this.filterCallback = filterCallback;
     }
     hasItemViews = (function() {
       var name;
@@ -1841,7 +1843,7 @@ module.exports = CollectionView = (function(_super) {
       _ref = this.collection.models;
       for (index = _i = 0, _len = _ref.length; _i < _len; index = ++_i) {
         item = _ref[index];
-        included = typeof filterer === 'function' ? filterer(item, index) : true;
+        included = typeof this.filterer === 'function' ? this.filterer(item, index) : true;
         view = this.subview("itemView:" + item.cid);
         if (!view) {
           throw new Error('CollectionView#filter: ' + ("no view found for " + item.cid));
@@ -2499,85 +2501,6 @@ History = (function(_super) {
 
 module.exports = Backbone.$ ? History : Backbone.History;
 
-});;loader.register('chaplin/lib/delayer', function(e, r, module) {
-'use strict';
-
-var Delayer;
-
-Delayer = {
-  setTimeout: function(name, time, handler) {
-    var handle, wrappedHandler, _ref,
-      _this = this;
-    if ((_ref = this.timeouts) == null) {
-      this.timeouts = {};
-    }
-    this.clearTimeout(name);
-    wrappedHandler = function() {
-      delete _this.timeouts[name];
-      return handler();
-    };
-    handle = setTimeout(wrappedHandler, time);
-    this.timeouts[name] = handle;
-    return handle;
-  },
-  clearTimeout: function(name) {
-    if (!(this.timeouts && (this.timeouts[name] != null))) {
-      return;
-    }
-    clearTimeout(this.timeouts[name]);
-    delete this.timeouts[name];
-  },
-  clearAllTimeouts: function() {
-    var handle, name, _ref;
-    if (!this.timeouts) {
-      return;
-    }
-    _ref = this.timeouts;
-    for (name in _ref) {
-      handle = _ref[name];
-      this.clearTimeout(name);
-    }
-  },
-  setInterval: function(name, time, handler) {
-    var handle, _ref;
-    this.clearInterval(name);
-    if ((_ref = this.intervals) == null) {
-      this.intervals = {};
-    }
-    handle = setInterval(handler, time);
-    this.intervals[name] = handle;
-    return handle;
-  },
-  clearInterval: function(name) {
-    if (!(this.intervals && this.intervals[name])) {
-      return;
-    }
-    clearInterval(this.intervals[name]);
-    delete this.intervals[name];
-  },
-  clearAllIntervals: function() {
-    var handle, name, _ref;
-    if (!this.intervals) {
-      return;
-    }
-    _ref = this.intervals;
-    for (name in _ref) {
-      handle = _ref[name];
-      this.clearInterval(name);
-    }
-  },
-  clearDelayed: function() {
-    this.clearAllTimeouts();
-    this.clearAllIntervals();
-  }
-};
-
-if (typeof Object.freeze === "function") {
-  Object.freeze(Delayer);
-}
-
-module.exports = Delayer;
-
 });;loader.register('chaplin/lib/event_broker', function(e, r, module) {
 'use strict';
 
@@ -2925,6 +2848,12 @@ utils = {
   modifierKeyPressed: function(event) {
     return event.shiftKey || event.altKey || event.ctrlKey || event.metaKey;
   },
+  reverse: function(criteria, params, query) {
+    return loader('chaplin/mediator').execute('router:reverse', criteria, params, query);
+  },
+  redirectTo: function(pathDesc, params, options) {
+    return loader('chaplin/mediator').execute('router:route', pathDesc, params, options);
+  },
   queryParams: {
     stringify: function(queryParams) {
       var arrParam, encodedKey, key, query, stringifyKeyValuePair, value, _i, _len;
@@ -2991,24 +2920,6 @@ if (typeof Object.seal === "function") {
 
 module.exports = utils;
 
-});;loader.register('chaplin/lib/helpers', function(e, r, module) {
-'use strict';
-
-var helpers, mediator;
-
-mediator = loader('chaplin/mediator');
-
-helpers = {
-  reverse: function(criteria, params, query) {
-    return mediator.execute('router:reverse', criteria, params, query);
-  },
-  redirectTo: function(pathDesc, params, options) {
-    return mediator.execute('router:route', pathDesc, params, options);
-  }
-};
-
-module.exports = helpers;
-
 });;loader.register('chaplin', function(e, r, module) {
 
 module.exports = {
@@ -3025,9 +2936,7 @@ module.exports = {
   CollectionView: loader('chaplin/views/collection_view'),
   Route: loader('chaplin/lib/route'),
   Router: loader('chaplin/lib/router'),
-  Delayer: loader('chaplin/lib/delayer'),
   EventBroker: loader('chaplin/lib/event_broker'),
-  helpers: loader('chaplin/lib/helpers'),
   support: loader('chaplin/lib/support'),
   SyncMachine: loader('chaplin/lib/sync_machine'),
   utils: loader('chaplin/lib/utils')
