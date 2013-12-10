@@ -1,5 +1,73 @@
-<h1>Chaplin Boilerplate Application</h1>
+<div id="site-container"><div class="header-container" id="header-container"><header class="header"><ul>
+  <li><a class="header-link" href="http://chaplinjs.org">Chaplin Site</a></li>
+  <li><a class="header-link" href="http://docs.chaplinjs.org">Docs</a></li>
+  <li><a class="header-link" href="https://github.com/chaplinjs/chaplin/issues">Issues</a></li>
+  <li><a class="header-link last-link" href="http://twitter.com/chaplinjs">Twitter</a></li>
+</ul>
+</header></div>
 
-<p>This Chaplin example provides an app scaffold using RequireJS as module loader. Handlebars is used as templating engine. The templates are loaded on demand using the RequireJS text plugin.</p>
+<div class="outer-page-container">
+  <div class="page-container" id="page-container">
+    <div class="home-page">
+      <h1>Chaplin Boilerplate Application</h1>
+      <p>This Chaplin example provides an app scaffold using RequireJS as module loader. Handlebars is used as templating engine. The templates are loaded on demand using the RequireJS text plugin.</p>
+      <div id="main-container"></div>
+    </div>
+  </div>
+</div>
+</div>
 
-<div id="main-container"></div>
+<!-- Inline styles are not good, write them in their own files. -->
+<!-- This is just an example. -->
+<style>
+  .header {
+    width: 551px;
+    margin: 0 auto;
+    padding: 5px;
+    font-size: 24px;
+    background-color: #fff;
+    border-bottom: 2px solid #427684;
+    font-weight: 300;
+    font-size: 1.25rem;
+    line-height: 1.2;
+  }
+  .header-link {
+    display: inline-block;
+    text-decoration: none;
+    color: #3f894a;
+    padding: 4px 15px;
+  }
+  .header-link.last-link {
+    padding-left: 9px;
+  }
+  .header-link:visited {
+    color: #3f894a;
+  }
+  .header-link:hover {
+    color: #27552e;
+    border-color: #27552e;
+  }
+  .header ul {
+    margin: 5px 0;
+  }
+  .header li {
+    display: inline;
+  }
+
+  .home-page {
+    width: 551px;
+    height: 275px;
+    margin: 0 auto;
+    padding: 5px;
+    margin-bottom: 0.5em;
+    color: #fff;
+    background-color: #7fc4d6;
+  }
+
+  * {
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+  }
+
+</style>
