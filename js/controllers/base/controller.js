@@ -14,7 +14,7 @@ define(['chaplin', 'views/site-view'], function(Chaplin, SiteView) {
     }
 
     Controller.prototype.beforeAction = function() {
-      return this.compose('site', SiteView);
+      return this.reuse('site', SiteView);
     };
 
     return Controller;

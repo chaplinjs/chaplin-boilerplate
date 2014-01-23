@@ -1,5 +1,5 @@
 /*!
- * Chaplin 0.12.0
+ * Chaplin 1.0.0
  *
  * Chaplin may be freely distributed under the MIT license.
  * For all details and documentation:
@@ -41,8 +41,6 @@ _ = loader('underscore');
 
 Backbone = loader('backbone');
 
-mediator = loader('chaplin/mediator');
-
 Dispatcher = loader('chaplin/dispatcher');
 
 Layout = loader('chaplin/views/layout');
@@ -52,6 +50,8 @@ Composer = loader('chaplin/composer');
 Router = loader('chaplin/lib/router');
 
 EventBroker = loader('chaplin/lib/event_broker');
+
+mediator = loader('chaplin/mediator');
 
 module.exports = Application = (function() {
 
@@ -133,20 +133,15 @@ module.exports = Application = (function() {
   Application.prototype.disposed = false;
 
   Application.prototype.dispose = function() {
-    var frozen, prop, properties, _i, _len;
+    var prop, properties, _i, _len;
     if (this.disposed) {
       return;
     }
-    frozen = typeof Object.isFrozen === "function" ? Object.isFrozen(this) : void 0;
     properties = ['dispatcher', 'layout', 'router', 'composer'];
     for (_i = 0, _len = properties.length; _i < _len; _i++) {
       prop = properties[_i];
-      if (!(this[prop] != null)) {
-        continue;
-      }
-      this[prop].dispose();
-      if (!frozen) {
-        delete this[prop];
+      if (this[prop] != null) {
+        this[prop].dispose();
       }
     }
     this.disposed = true;
@@ -294,9 +289,6 @@ module.exports = Dispatcher = (function() {
     if (!(options.query != null)) {
       options.query = {};
     }
-    if (options.changeURL !== false) {
-      options.changeURL = true;
-    }
     if (options.forceStartup !== true) {
       options.forceStartup = false;
     }
@@ -323,13 +315,22 @@ module.exports = Dispatcher = (function() {
   };
 
   Dispatcher.prototype.controllerLoaded = function(route, params, options, Controller) {
-    var controller;
-    this.previousRoute = this.currentRoute;
-    this.currentRoute = _.extend({}, route, {
-      previous: utils.beget(this.previousRoute)
-    });
-    controller = new Controller(params, this.currentRoute, options);
-    return this.executeBeforeAction(controller, this.currentRoute, params, options);
+    var controller, prev, previous;
+    if (this.nextPreviousRoute = this.currentRoute) {
+      previous = _.extend({}, this.nextPreviousRoute);
+      if (this.currentParams != null) {
+        previous.params = this.currentParams;
+      }
+      if (previous.previous) {
+        delete previous.previous;
+      }
+      prev = {
+        previous: previous
+      };
+    }
+    this.nextCurrentRoute = _.extend({}, route, prev);
+    controller = new Controller(params, this.nextCurrentRoute, options);
+    return this.executeBeforeAction(controller, this.nextCurrentRoute, params, options);
   };
 
   Dispatcher.prototype.executeAction = function(controller, route, params, options) {
@@ -344,7 +345,6 @@ module.exports = Dispatcher = (function() {
     if (controller.redirected) {
       return;
     }
-    this.adjustURL(route, params, options);
     return this.publishEvent('dispatcher:dispatch', this.currentController, params, route, options);
   };
 
@@ -353,10 +353,14 @@ module.exports = Dispatcher = (function() {
       _this = this;
     before = controller.beforeAction;
     executeAction = function() {
-      if (controller.redirected || _this.currentRoute && route !== _this.currentRoute) {
+      if (controller.redirected || _this.currentRoute && route === _this.currentRoute) {
+        _this.nextPreviousRoute = _this.nextCurrentRoute = null;
         controller.dispose();
         return;
       }
+      _this.previousRoute = _this.nextPreviousRoute;
+      _this.currentRoute = _this.nextCurrentRoute;
+      _this.nextPreviousRoute = _this.nextCurrentRoute = null;
       return _this.executeAction(controller, route, params, options);
     };
     if (!before) {
@@ -371,17 +375,6 @@ module.exports = Dispatcher = (function() {
       return promise.then(executeAction);
     } else {
       return executeAction();
-    }
-  };
-
-  Dispatcher.prototype.adjustURL = function(route, params, options) {
-    var url;
-    if (route.path == null) {
-      return;
-    }
-    url = route.path + (route.query ? "?" + route.query : "");
-    if (options.changeURL) {
-      return mediator.execute('router:changeURL', url, options);
     }
   };
 
@@ -595,10 +588,14 @@ module.exports = Controller = (function() {
     return mediator.execute('adjustTitle', subtitle);
   };
 
-  Controller.prototype.compose = function(name) {
+  Controller.prototype.reuse = function(name) {
     var method;
     method = arguments.length === 1 ? 'retrieve' : 'compose';
     return mediator.execute.apply(mediator, ["composer:" + method].concat(__slice.call(arguments)));
+  };
+
+  Controller.prototype.compose = function() {
+    throw new Error('Controller#compose was moved to Controller#reuse');
   };
 
   Controller.prototype.redirectTo = function(pathDesc, params, options) {
@@ -1246,7 +1243,7 @@ module.exports = View = (function(_super) {
       value = events[key];
       handler = typeof value === 'function' ? value : this[value];
       if (!handler) {
-        throw new Error("Method '" + handler + "' does not exist");
+        throw new Error("Method '" + value + "' does not exist");
       }
       match = key.match(/^(\S+)\s*(.*)$/);
       eventName = "" + match[1] + ".delegateEvents" + this.cid;
@@ -2009,13 +2006,32 @@ Controller = loader('chaplin/controllers/controller');
 utils = loader('chaplin/lib/utils');
 
 module.exports = Route = (function() {
-  var escapeRegExp;
+  var escapeRegExp, optionalRegExp, paramRegExp, processTrailingSlash;
 
   Route.extend = Backbone.Model.extend;
 
   _.extend(Route.prototype, EventBroker);
 
-  escapeRegExp = /[-[\]{}()+?.,\\^$|#\s]/g;
+  escapeRegExp = /[\-{}\[\]+?.,\\\^$|#\s]/g;
+
+  optionalRegExp = /\((.*?)\)/g;
+
+  paramRegExp = /(?::|\*)(\w+)/g;
+
+  processTrailingSlash = function(path, trailing) {
+    switch (trailing) {
+      case true:
+        if (path.slice(-1) !== '/') {
+          path += '/';
+        }
+        break;
+      case false:
+        if (path.slice(-1) === '/') {
+          path = path.slice(0, -1);
+        }
+    }
+    return path;
+  };
 
   function Route(pattern, controller, action, options) {
     var _ref;
@@ -2024,7 +2040,9 @@ module.exports = Route = (function() {
     this.action = action;
     this.handler = __bind(this.handler, this);
 
-    this.addParamName = __bind(this.addParamName, this);
+    this.replaceParams = __bind(this.replaceParams, this);
+
+    this.parseOptionalPortion = __bind(this.parseOptionalPortion, this);
 
     if (typeof this.pattern !== 'string') {
       throw new Error('Route: RegExps are not supported.\
@@ -2040,7 +2058,9 @@ module.exports = Route = (function() {
     if ((_ref = this.name) == null) {
       this.name = this.controller + '#' + this.action;
     }
-    this.paramNames = [];
+    this.allParams = [];
+    this.requiredParams = [];
+    this.optionalParams = [];
     if (this.action in Controller.prototype) {
       throw new Error('Route: You should not use existing controller ' + 'properties as action names');
     }
@@ -2071,18 +2091,33 @@ module.exports = Route = (function() {
   };
 
   Route.prototype.reverse = function(params, query) {
-    var name, queryString, url, value, _i, _len, _ref;
+    var name, queryString, raw, url, value, _i, _j, _len, _len1, _ref, _ref1;
     params = this.normalizeParams(params);
     if (params === false) {
       return false;
     }
     url = this.pattern;
-    _ref = this.paramNames;
+    _ref = this.requiredParams;
     for (_i = 0, _len = _ref.length; _i < _len; _i++) {
       name = _ref[_i];
       value = params[name];
       url = url.replace(RegExp("[:*]" + name, "g"), value);
     }
+    _ref1 = this.optionalParams;
+    for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
+      name = _ref1[_j];
+      if (value = params[name]) {
+        url = url.replace(RegExp("[:*]" + name, "g"), value);
+      }
+    }
+    raw = url.replace(optionalRegExp, function(match, portion) {
+      if (portion.match(/[:*]/g)) {
+        return "";
+      } else {
+        return portion;
+      }
+    });
+    url = processTrailingSlash(raw, this.options.trailing);
     if (!query) {
       return url;
     }
@@ -2097,11 +2132,11 @@ module.exports = Route = (function() {
   Route.prototype.normalizeParams = function(params) {
     var paramIndex, paramName, paramsHash, _i, _len, _ref;
     if (utils.isArray(params)) {
-      if (params.length < this.paramNames.length) {
+      if (params.length < this.requiredParams.length) {
         return false;
       }
       paramsHash = {};
-      _ref = this.paramNames;
+      _ref = this.requiredParams;
       for (paramIndex = _i = 0, _len = _ref.length; _i < _len; paramIndex = ++_i) {
         paramName = _ref[paramIndex];
         paramsHash[paramName] = params[paramIndex];
@@ -2138,7 +2173,7 @@ module.exports = Route = (function() {
 
   Route.prototype.testParams = function(params) {
     var paramName, _i, _len, _ref;
-    _ref = this.paramNames;
+    _ref = this.requiredParams;
     for (_i = 0, _len = _ref.length; _i < _len; _i++) {
       paramName = _ref[_i];
       if (params[paramName] === void 0) {
@@ -2149,14 +2184,37 @@ module.exports = Route = (function() {
   };
 
   Route.prototype.createRegExp = function() {
-    var pattern;
-    pattern = this.pattern.replace(escapeRegExp, '\\$&').replace(/(?::|\*)(\w+)/g, this.addParamName);
-    return this.regExp = RegExp("^" + pattern + "(?=\\?|$)");
+    var pattern,
+      _this = this;
+    pattern = this.pattern;
+    pattern = pattern.replace(escapeRegExp, '\\$&');
+    this.replaceParams(pattern, function(match, param) {
+      return _this.allParams.push(param);
+    });
+    pattern = pattern.replace(optionalRegExp, this.parseOptionalPortion);
+    pattern = this.replaceParams(pattern, function(match, param) {
+      _this.requiredParams.push(param);
+      return _this.paramCapturePattern(match);
+    });
+    return this.regExp = RegExp("^" + pattern + "(?=\\/?(?=\\?|$))");
   };
 
-  Route.prototype.addParamName = function(match, paramName) {
-    this.paramNames.push(paramName);
-    if (match.charAt(0) === ':') {
+  Route.prototype.parseOptionalPortion = function(match, optionalPortion) {
+    var portion,
+      _this = this;
+    portion = this.replaceParams(optionalPortion, function(match, param) {
+      _this.optionalParams.push(param);
+      return _this.paramCapturePattern(match);
+    });
+    return "(?:" + portion + ")?";
+  };
+
+  Route.prototype.replaceParams = function(s, callback) {
+    return s.replace(paramRegExp, callback);
+  };
+
+  Route.prototype.paramCapturePattern = function(param) {
+    if (param.charAt(0) === ':') {
       return '([^\/\?]+)';
     } else {
       return '(.*?)';
@@ -2191,6 +2249,7 @@ module.exports = Route = (function() {
         options.query = utils.queryParams.parse(query);
       }
       params = this.extractParams(path);
+      path = processTrailingSlash(path, this.options.trailing);
     }
     actionParams = _.extend({}, params, this.options.params);
     route = {
@@ -2210,7 +2269,7 @@ module.exports = Route = (function() {
     _ref = matches.slice(1);
     for (index = _i = 0, _len = _ref.length; _i < _len; index = ++_i) {
       match = _ref[index];
-      paramName = this.paramNames.length ? this.paramNames[index] : index;
+      paramName = this.allParams.length ? this.allParams[index] : index;
       params[paramName] = match;
     }
     return params;
@@ -2254,26 +2313,26 @@ module.exports = Router = (function() {
     isWebFile = window.location.protocol !== 'file:';
     _.defaults(this.options, {
       pushState: isWebFile,
-      root: '/'
+      root: '/',
+      trailing: false
     });
     this.removeRoot = new RegExp('^' + utils.escapeRegExp(this.options.root) + '(#)?');
     this.subscribeEvent('!router:route', this.oldEventError);
     this.subscribeEvent('!router:routeByName', this.oldEventError);
     this.subscribeEvent('!router:changeURL', this.oldURLEventError);
+    this.subscribeEvent('dispatcher:dispatch', this.changeURL);
     mediator.setHandler('router:route', this.route, this);
     mediator.setHandler('router:reverse', this.reverse, this);
-    mediator.setHandler('router:changeURL', this.changeURL, this);
     this.createHistory();
   }
 
   Router.prototype.oldEventError = function() {
     throw new Error('!router:route and !router:routeByName events were removed.\
-  Use `Chaplin.helpers.redirectTo`');
+  Use `Chaplin.utils.redirectTo`');
   };
 
   Router.prototype.oldURLEventError = function() {
-    throw new Error('!router:changeURL event was removed.\
-  Use mediator.execute("router:changeURL")');
+    throw new Error('!router:changeURL event was removed.');
   };
 
   Router.prototype.createHistory = function() {
@@ -2319,6 +2378,9 @@ module.exports = Router = (function() {
       }
       _ref = target.split('#'), controller = _ref[0], action = _ref[1];
     }
+    _.defaults(options, {
+      trailing: this.options.trailing
+    });
     route = new Route(pattern, controller, action, options);
     Backbone.history.handlers.push({
       route: route,
@@ -2329,10 +2391,13 @@ module.exports = Router = (function() {
 
   Router.prototype.route = function(pathDesc, params, options) {
     var handler, path;
-    params = params ? utils.isArray(params) ? params.slice() : _.extend({}, params) : {};
     if (typeof pathDesc === 'object') {
       path = pathDesc.url;
+      if (!params && pathDesc.params) {
+        params = pathDesc.params;
+      }
     }
+    params = params ? utils.isArray(params) ? params.slice() : _.extend({}, params) : {};
     if (path != null) {
       path = path.replace(this.removeRoot, '');
       handler = this.findHandler(function(handler) {
@@ -2384,11 +2449,12 @@ module.exports = Router = (function() {
     throw new Error('Router#reverse: invalid route specified');
   };
 
-  Router.prototype.changeURL = function(url, options) {
-    var navigateOptions;
-    if (options == null) {
-      options = {};
+  Router.prototype.changeURL = function(controller, params, route, options) {
+    var navigateOptions, url;
+    if (!((route.path != null) && options.changeURL)) {
+      return;
     }
+    url = route.path + (route.query ? "?" + route.query : "");
     navigateOptions = {
       trigger: options.trigger === true,
       replace: options.replace === true
@@ -2492,6 +2558,48 @@ History = (function(_super) {
     }
     if (!this.options.silent) {
       return this.loadUrl();
+    }
+  };
+
+  History.prototype.navigate = function(fragment, options) {
+    var historyMethod, isSameFragment, url;
+    if (fragment == null) {
+      fragment = '';
+    }
+    if (!Backbone.History.started) {
+      return false;
+    }
+    if (!options || options === true) {
+      options = {
+        trigger: options
+      };
+    }
+    fragment = this.getFragment(fragment);
+    url = this.root + fragment;
+    if (this.fragment === fragment) {
+      return false;
+    }
+    this.fragment = fragment;
+    if (fragment.length === 0 && url !== '/') {
+      url = url.slice(0, -1);
+    }
+    if (this._hasPushState) {
+      historyMethod = options.replace ? 'replaceState' : 'pushState';
+      this.history[historyMethod]({}, document.title, url);
+    } else if (this._wantsHashChange) {
+      this._updateHash(this.location, fragment, options.replace);
+      isSameFragment = fragment !== this.getFragment(this.getHash(this.iframe));
+      if ((this.iframe != null) && isSameFragment) {
+        if (!options.replace) {
+          this.iframe.document.open().close();
+        }
+        this._updateHash(this.iframe.location, fragment, options.replace);
+      }
+    } else {
+      return this.location.assign(url);
+    }
+    if (options.trigger) {
+      return this.loadUrl(fragment);
     }
   };
 
